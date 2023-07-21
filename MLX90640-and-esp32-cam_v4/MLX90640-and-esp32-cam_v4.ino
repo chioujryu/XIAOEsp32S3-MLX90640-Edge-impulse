@@ -419,18 +419,18 @@ size_t RGB888toJPG(uint8_t * rgb888_buf, uint16_t height, uint16_t width){
   size_t jpg_size = 0;
   
   if(jpg_buf == NULL){
-      printf("\nMalloc failed to allocate buffer for JPG.");
+      Serial.printf("\nMalloc failed to allocate buffer for JPG.");
       fprintf(stderr, "\nmalloc failed: %s\n", strerror(errno));
       exit(1);
   }else{
       // Convert the RAW image into JPG
       // The parameter "31" is the JPG quality. Higher is better.
       fmt2jpg(rgb888_buf, height*width*3, height, width, PIXFORMAT_RGB888, 31, &jpg_buf, &jpg_size);
-      printf("\nConverted JPG size: %d bytes", jpg_size);
+      Serial.printf("\nConverted JPG size: %d bytes", jpg_size);
   }
   
   heap_caps_free(rgb888_buf);
-
+  rgb888_buf = NULL;
   
   return jpg_size;
 }
@@ -683,7 +683,7 @@ void configInitCamera(){
   config.pixel_format = PIXFORMAT_JPEG; // for streaming  PIXFORMAT_GRAYSCALE, PIXFORMAT_JPEG
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;   // CAMERA_GRAB_LATEST （The only solution I have found to avoid that lag/delay with the buffered data is to add:）, CAMERA_GRAB_WHEN_EMPTY
   config.fb_location = CAMERA_FB_IN_PSRAM; 
-  config.jpeg_quality = 10;   // 越低相片品質愈好
+  config.jpeg_quality = 5;   // 越低相片品質愈好
   config.fb_count = 1;
   
   // ===Initialize the Camera===

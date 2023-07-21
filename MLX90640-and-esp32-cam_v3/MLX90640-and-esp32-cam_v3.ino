@@ -77,10 +77,7 @@ char val;
 camera_fb_t * fb = NULL;
 uint8_t * rgb888_buf_1 = NULL; // points to the rgb888 output of the capture
 uint8_t * rgb888_buf_2 = NULL; // points to the rgb888 output of the capture
-
 uint8_t * jpg_buf = NULL; // points to the jpg output of the capture
-
-
 uint8_t * dstImage = NULL;  // resize 過後的照片
 
 // RAW DATA OF IR CAM
@@ -276,8 +273,6 @@ void handle_NotFound(){
 
 // =======Capture ESP32 Photo and Save it to SPIFFS=======
 void captureESP32PhotoSaveSpiffs( void ) {
-
-  
   
   fb = esp_camera_fb_get();
   esp_camera_fb_return(fb);  // dispose the buffered image
@@ -295,6 +290,8 @@ void captureESP32PhotoSaveSpiffs( void ) {
       Serial.println("Camera capture failed");
       return;
     }
+
+
 
     
     // ===Photo for view===
@@ -357,7 +354,7 @@ void captureThermalPhotoSaveSpiffs( void ) {
     rgb888_buf_2 = resize_image(rgb888_buf_1,32,24, rgb888_buf_2, 320,240,3);  // 將 32x24 變成 320x240
     size_t jpg_size = RGB888toJPG(rgb888_buf_2, 320, 240); // 將 RGB888 轉成 JPG 
     Serial.printf("\nConverted thermal JPG size: %d bytes", jpg_size);
-   
+    
     // Insert the data in the photo file 
     File file = SPIFFS.open(FILE_PHOTO_THERMAL, FILE_WRITE);
   

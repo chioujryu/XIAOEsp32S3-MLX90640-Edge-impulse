@@ -94,12 +94,12 @@ const ei_impulse_t impulse_249016_3 = {
     .project_name = "XIAOEsp32S3-MLX90640-Edge-impulse",
     .deploy_version = 3,
 
-    .nn_input_frame_size = 9216,
-    .raw_sample_count = 9216,
+    .nn_input_frame_size = 9216,  //input image size(h*w*c) ***
+    .raw_sample_count = 9216,       //(h*w) ***
     .raw_samples_per_frame = 1,
-    .dsp_input_frame_size = 9216 * 1,
-    .input_width = 96,
-    .input_height = 96,
+    .dsp_input_frame_size = 9216 * 1,       
+    .input_width = 96,      // img w ***
+    .input_height = 96,     // img h ***
     .input_frames = 1,
     .interval_ms = 1,
     .frequency = 0,
@@ -108,11 +108,11 @@ const ei_impulse_t impulse_249016_3 = {
     
     .object_detection = 1,
     .object_detection_count = 10,
-    .object_detection_threshold = 0.5,
+    .object_detection_threshold = 0.5,      // threshold
     .object_detection_last_layer = EI_CLASSIFIER_LAST_LAYER_FOMO,
-    .fomo_output_size = 12,
+    .fomo_output_size = 12,             // ***
     
-    .tflite_output_features_count = 432,
+    .tflite_output_features_count = 432,            // out features count ***
     .learning_blocks_size = ei_learning_blocks_size,
     .learning_blocks = ei_learning_blocks,
 
@@ -120,11 +120,11 @@ const ei_impulse_t impulse_249016_3 = {
 
     .sensor = EI_CLASSIFIER_SENSOR_CAMERA,
     .fusion_string = "image",
-    .slice_size = (9216/4),
+    .slice_size = (9216/4),       (h*w*c)/4         
     .slices_per_model_window = 4,
 
     .has_anomaly = 0,
-    .label_count = 2,
+    .label_count = 2,    // label count ***
     .calibration = ei_calibration,
     .categories = ei_classifier_inferencing_categories
 };

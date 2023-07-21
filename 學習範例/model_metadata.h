@@ -52,20 +52,20 @@
 #define EI_CLASSIFIER_DATATYPE_UINT8             3
 #define EI_CLASSIFIER_DATATYPE_INT8              9
 
-#define EI_CLASSIFIER_PROJECT_ID                 249016
-#define EI_CLASSIFIER_PROJECT_OWNER              "chioujryu"
-#define EI_CLASSIFIER_PROJECT_NAME               "XIAOEsp32S3-MLX90640-Edge-impulse"
-#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     3
-#define EI_CLASSIFIER_NN_INPUT_FRAME_SIZE        9216   //input image size(h*w*c) ***
-#define EI_CLASSIFIER_RAW_SAMPLE_COUNT           9216   //(h*w) ***
+#define EI_CLASSIFIER_PROJECT_ID                 242217
+#define EI_CLASSIFIER_PROJECT_OWNER              "junhuiliang"
+#define EI_CLASSIFIER_PROJECT_NAME               "junhui-project-1"
+#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     5
+#define EI_CLASSIFIER_NN_INPUT_FRAME_SIZE        9216 //input image size(h*w*c) ***
+#define EI_CLASSIFIER_RAW_SAMPLE_COUNT           9216 //(h*w) ***
 #define EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME      1
 #define EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE       (EI_CLASSIFIER_RAW_SAMPLE_COUNT * EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
-#define EI_CLASSIFIER_INPUT_WIDTH                96     // img w ***
-#define EI_CLASSIFIER_INPUT_HEIGHT               96     // img h ***
+#define EI_CLASSIFIER_INPUT_WIDTH                96 // img w ***
+#define EI_CLASSIFIER_INPUT_HEIGHT               96 // img h ***
 #define EI_CLASSIFIER_INPUT_FRAMES               1
-#define EI_CLASSIFIER_NN_OUTPUT_COUNT            432    // out features count *** 
+#define EI_CLASSIFIER_NN_OUTPUT_COUNT            288 // out features count ***
 #define EI_CLASSIFIER_INTERVAL_MS                1
-#define EI_CLASSIFIER_LABEL_COUNT                2      // label count ***
+#define EI_CLASSIFIER_LABEL_COUNT                1 // label count ***
 #define EI_CLASSIFIER_HAS_ANOMALY                0
 #define EI_CLASSIFIER_FREQUENCY                  0
 #define EI_CLASSIFIER_HAS_MODEL_VARIABLES        1
@@ -76,20 +76,22 @@
 #define EI_CLASSIFIER_OBJECT_DETECTION_LAST_LAYER  EI_CLASSIFIER_LAST_LAYER_FOMO
 #warning 'EI_CLASSFIER_OBJECT_DETECTION_COUNT' is used for the guaranteed minimum number of objects detected. To get all objects during inference use 'bounding_boxes_count' from the 'ei_impulse_result_t' struct instead.
 #define EI_CLASSIFIER_OBJECT_DETECTION_COUNT       10
-#define EI_CLASSIFIER_OBJECT_DETECTION_THRESHOLD   0.5      // threshold
+#define EI_CLASSIFIER_OBJECT_DETECTION_THRESHOLD   0.5 // threshold
 #define EI_CLASSIFIER_TFLITE_OUTPUT_DATA_TENSOR    0
 #define EI_CLASSIFIER_TFLITE_OUTPUT_LABELS_TENSOR  1
 #define EI_CLASSIFIER_TFLITE_OUTPUT_SCORE_TENSOR   2
 
 
 #define EI_CLASSIFIER_TFLITE_INPUT_DATATYPE         EI_CLASSIFIER_DATATYPE_INT8
+#define EI_CLASSIFIER_TFLITE_INPUT_QUANTIZED        1
+#define EI_CLASSIFIER_TFLITE_INPUT_SCALE            0.003921568859368563
+#define EI_CLASSIFIER_TFLITE_INPUT_ZEROPOINT        -128
 #define EI_CLASSIFIER_TFLITE_OUTPUT_DATATYPE        EI_CLASSIFIER_DATATYPE_INT8
-
+#define EI_CLASSIFIER_TFLITE_OUTPUT_QUANTIZED       1
+#define EI_CLASSIFIER_TFLITE_OUTPUT_SCALE           0.00390625
+#define EI_CLASSIFIER_TFLITE_OUTPUT_ZEROPOINT       -128
 
 #define EI_CLASSIFIER_INFERENCING_ENGINE            EI_CLASSIFIER_TFLITE
-
-#define EI_CLASSIFIER_QUANTIZATION_ENABLED          1
-
 #define EI_CLASSIFIER_COMPILED                      0
 #define EI_CLASSIFIER_HAS_TFLITE_OPS_RESOLVER       0
 
@@ -111,7 +113,6 @@
 
 #define EI_CLASSIFIER_SENSOR                     EI_CLASSIFIER_SENSOR_CAMERA
 #define EI_CLASSIFIER_FUSION_AXES_STRING         "image"
-#define EI_CLASSIFIER_CALIBRATION_ENABLED        0
 
 #ifndef EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW
 #define EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW    4
