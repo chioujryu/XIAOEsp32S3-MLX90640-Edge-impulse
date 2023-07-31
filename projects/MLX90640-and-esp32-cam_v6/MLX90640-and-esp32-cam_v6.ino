@@ -20,7 +20,6 @@
 #include <FS.h>   // SD Card ESP32
 #include "SD.h"   // SD Card ESP32
 #include "SPI.h"
-#include <string>
 #include "Esp.h"
 
 #include "Arduino.h"
@@ -438,7 +437,7 @@ bool checkPhotoExitInSPIFFS( fs::FS &fs ) {
 }
 
 
-// =======從 SPIFF 拿取照片=======
+// 從 SPIFF 拿取照片
 void getSpiffImg(String path, String TyPe) 
 { 
   if(SPIFFS.exists(path))
@@ -468,7 +467,7 @@ void esp32_photo_save_to_SD_card(const char * fileName) {
     }
 
     // ===Save photo to file===
-    writeFile(SD, fileName, fb->buf, fb->len);
+    write_file_jpg(SD, fileName, fb->buf, fb->len);
    
     // Insert the data in the photo file 
     File file = SPIFFS.open(FILE_PHOTO, FILE_WRITE);
@@ -510,7 +509,7 @@ void thermal_photo_save_to_SD_card(const char * fileName){
   Serial.printf("Converted thermal JPG size: %d bytes\n", jpg_size);
 
   // Save photo to SD card
-  writeFile(SD, fileName, jpg_buf_thermal, jpg_size); 
+  write_file_jpg(SD, fileName, jpg_buf_thermal, jpg_size); 
 
   // Insert the data in the photo file 
   File file = SPIFFS.open(FILE_PHOTO_THERMAL, FILE_WRITE);
@@ -577,7 +576,7 @@ void esp_and_thermal_image_addition_save_to_SD_card(const char * fileName){
   }
 
   // Save photo to SD card
-  writeFile(SD, fileName, jpg_buf_esp_and_thermal, jpg_size); 
+  write_file_jpg(SD, fileName, jpg_buf_esp_and_thermal, jpg_size); 
   
   // release buffer
   free(jpg_buf_esp_and_thermal);
@@ -614,23 +613,14 @@ void thermal_buffer_save_to_SD_card(const char * fileName){
   
   const char * data = thermalData.c_str();
 
-  writeFileTxt(SD, fileName, data);
+  write_file_txt(SD, fileName, data);
 
   Serial.println("Thermal buffer saved to file");
 }
 */
 
-// =======SD card write file=======
-void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len){
-    
-  // 參數說明:
-  // fs: 檔案系統物件
-  // path: 欲開啟寫入的檔案路徑
-  // data: 欲寫入檔案的資料指標 (optional)
-  // message: 欲寫入檔案的資料指標 (optional)
-  // len: data 的資料長度
-  
-  // 如果寫入的資料是照片的data，那請將 message 輸入為 "1"
+// SD card write file
+void write_file_jpg(fs::FS &fs, const char * path, uint8_t * data, size_t len){
   
   Serial.printf("Writing file: %s\n", path);
   
@@ -645,7 +635,7 @@ void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len){
   file.close();
 }
 
-void writeFileTxt(fs::FS &fs, const char * path,const char * message){
+void write_file_txt(fs::FS &fs, const char * path,const char * message){
     
   Serial.printf("Writing file: %s\n", path);
   
@@ -659,7 +649,6 @@ void writeFileTxt(fs::FS &fs, const char * path,const char * message){
   } else {
     Serial.println("Write failed");
   }
-  
   file.close();
 }
 

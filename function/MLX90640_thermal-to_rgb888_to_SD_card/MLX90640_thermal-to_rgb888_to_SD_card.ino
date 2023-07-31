@@ -1,7 +1,10 @@
 /* Includes ---------------------------------------------------------------- */
 #include <XIAO-ESP32-Person-and-bottle-detection_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
+#include <Adafruit_MLX90640.h>
 
+#include <WiFi.h>
+#include <WebServer.h>
 #include "esp_camera.h"
 #include "esp_timer.h"
 #include "img_converters.h"
@@ -12,16 +15,18 @@
 #include <FS.h>   // SD Card ESP32
 #include "SD.h"   // SD Card ESP32
 #include "SPI.h"
-#include <string>
 #include "Esp.h"
 
 #include "Arduino.h"
 
+float * mlx90640To                              = (float *) malloc(32 * 24 * sizeof(float));
+float * minTemp_and_maxTemp_and_aveTemp         = (float *) malloc(3 * sizeof(float));
+uint8_t * rgb888_buf_32x24_mlx90640             = (uint8_t *) malloc(32 * 24 * 3 * sizeof(uint8_t));
+uint8_t * rgb888_buf_320x240_mlx90640           = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+int imageCount                                  = 0;
 
-uint8_t * rgb888_buf_320x240_esp32 = (uint8_t *)malloc(320*240*3);;
-uint8_t * rgb888_buf_640x480_esp32 = (uint8_t *)malloc(640*480*3);;
-camera_fb_t * fb = NULL;
-size_t imageCount = 0;
+
+Adafruit_MLX90640 mlx; 
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 #if defined(CAMERA_MODEL_XIAO_ESP32S3)
@@ -44,16 +49,22 @@ size_t imageCount = 0;
 #define PCLK_GPIO_NUM     13
 
 #define LED_GPIO_NUM      21
+
 #else
 #error "Camera model not selected"
 #endif
+
+// 宣告函數
+void logMemory();
+void mlx90640_capture();
+void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len);
+void configInitCamera();
 
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("setup");
-
   Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
   Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
 
@@ -61,8 +72,9 @@ void setup() {
   if(!SD.begin(21)){
     Serial.println("Card Mount Failed");
     return;}
-  // Determine if the type of SD card is available
   uint8_t cardType = SD.cardType();
+  
+  // determine if the type of SD card is available
   if(cardType == CARD_NONE){
     Serial.println("No SD card attached");
     return;}
@@ -87,23 +99,35 @@ void setup() {
           Serial.println("PSRAM does not work");
   }
 
+  // MLX90640 setup
+  if (!mlx.begin()) {
+    Serial.println("Failed to initialize MLX90640!");
+    while (1);
+  }else{Serial.println("MLX90640 initialized!");}
+
   configInitCamera();
+
+  logMemory();
 }
 
 void loop() {
 
-  bool whether_to_check_memory_usage = false;
+  bool whether_to_check_memory_usage     = false;
 
-  Serial.println("Capture a photo using esp32");
-  char filename[32];
-  sprintf(filename, "/%d_image.jpg", imageCount);
-  capture_and_crop_save_to_SD_card(filename);
-  whether_to_check_memory_usage = true;
-  imageCount ++;
-    
-  logMemory();
-  
-  delay(10000);
+  if(Serial.available()>0){
+    char receivedChar = Serial.read();
+    if (receivedChar == '1'){
+      Serial.println("Enter '1' in serial, capture a photo using MLX90640");
+      char filename[32];
+      sprintf(filename, "/%d_image.jpg", imageCount);
+      mlx90640_capture_and_save_to_SD_card(filename, minTemp_and_maxTemp_and_aveTemp);
+      whether_to_check_memory_usage = true;
+      imageCount++;
+    } 
+  }
+  if (whether_to_check_memory_usage == true){logMemory();}
+
+  delay(100);
 }
 
 void logMemory() {
@@ -111,34 +135,28 @@ void logMemory() {
   Serial.println("Used PSRAM: " + String(ESP.getPsramSize() - ESP.getFreePsram()) + " bytes");
 }
 
-void capture_and_crop_save_to_SD_card(const char * file_dir){
-  
-  uint8_t * jpg_buf = NULL;
-  size_t jpg_size = 0;
+void mlx90640_capture_and_save_to_SD_card(const char * file_dir, float * min_and_max_and_ave_temp){
+  // define buffer pointer
+  uint8_t * jpg_buf_esp_and_thermal    = NULL;
+  size_t jpg_size                      = 0;
+  uint16_t thermal_buf_width = 32;
+  uint16_t thermal_buf_height = 24;
 
-  // 清空照片的 buffer
-  fb = esp_camera_fb_get();
-  esp_camera_fb_return(fb);  // dispose the buffered image
-  fb = NULL; // reset to capture errors
+  mlx.getFrame(mlx90640To); // get thermal buffer
 
-  // 拍照
-  fb = esp_camera_fb_get(); // 拍一張照片（將照片放進照片緩衝區）
-  if (!fb) {
-    Serial.println("Camera capture failed");}
+  find_min_max_average_temp(mlx90640To, thermal_buf_width, thermal_buf_height, min_and_max_and_ave_temp); // find min and max temparature
 
-  fmt2rgb888(fb->buf, fb->len, fb->format, rgb888_buf_320x240_esp32);
-  ei::image::processing::resize_image(rgb888_buf_320x240_esp32, 320, 240, rgb888_buf_640x480_esp32, 640, 480, 3);
-  ei::image::processing::crop_image_rgb888_packed(rgb888_buf_640x480_esp32, 640, 480, 160, 120, rgb888_buf_320x240_esp32, 320, 240);
-  fmt2jpg(rgb888_buf_320x240_esp32, 320*240*3, 320, 240, PIXFORMAT_RGB888, 31, &jpg_buf, &jpg_size);
+  MLX90640_thermal_to_rgb888(mlx90640To, rgb888_buf_32x24_mlx90640, min_and_max_and_ave_temp); 
+  ei::image::processing::resize_image(rgb888_buf_32x24_mlx90640, 32, 24, rgb888_buf_320x240_mlx90640, 320, 240, 3);
+  if(!fmt2jpg(rgb888_buf_320x240_mlx90640, 320*240*3, 320, 240, PIXFORMAT_RGB888, 31, &jpg_buf_esp_and_thermal, &jpg_size)){
+  Serial.println("Converted esp JPG size: " + String(jpg_size) + " bytes");
+  }
 
-  writeFile(SD, file_dir, jpg_buf, jpg_size);
-  
-  // release image
-  esp_camera_fb_return(fb); 
-  fb = NULL;
-  free(jpg_buf);
-  jpg_buf = NULL;
-  jpg_size = 0;
+  writeFile(SD, file_dir, jpg_buf_esp_and_thermal, jpg_size);
+
+  // release buffer pointer
+  free(jpg_buf_esp_and_thermal);
+  jpg_buf_esp_and_thermal = NULL;
 }
 
 // SD card write file
@@ -190,9 +208,7 @@ void configInitCamera(){
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x \n", err);
     return;
-    //ESP.restart();
   }
-
 
   sensor_t * s = esp_camera_sensor_get();
   s->set_brightness(s, 0);     // -2 to 2
@@ -217,4 +233,110 @@ void configInitCamera(){
   s->set_vflip(s, 1);          // 0 = disable , 1 = enable
   s->set_dcw(s, 1);            // 0 = disable , 1 = enable
   s->set_colorbar(s, 0);       // 0 = disable , 1 = enable  
+}
+
+
+
+
+
+
+// 找出陣列中的最大溫度跟最小溫度
+void find_min_max_average_temp(float * buf, uint16_t width, uint16_t height, float * min_and_max_and_average){
+
+  float minTemp = 100;
+  float maxTemp = 0;
+  float aveTemp = 0;
+
+  // 找出圖像的最小溫度跟最大溫度
+  for (int i = 0; i < width * height; i++) {  
+    float temp = buf[i];  
+    if (temp < minTemp) minTemp = temp;
+    if (temp > maxTemp) maxTemp = temp; 
+  }
+
+  // 找出圖像的平均溫度
+  for (int i = 0; i < width * height; i++){
+    aveTemp += buf[i];
+  }
+  aveTemp = aveTemp / (width * height);
+
+  min_and_max_and_average[0] = minTemp;
+  min_and_max_and_average[1] = maxTemp;
+  min_and_max_and_average[2] = aveTemp;
+
+  Serial.println("minTemp: " + String(min_and_max_and_average[0]) + "  " +
+                 "maxTemp: " + String(min_and_max_and_average[1]) + "  " +
+                 "aveTemp: " + String(min_and_max_and_average[2]));
+}
+
+// 將單一 pixel 的溫度值，轉變成 R
+uint8_t mapValueToColor_r(float temp, float * min_and_max_temp) {  // , float minTemp, float maxTemp
+  
+  float minTemp = min_and_max_temp[0];
+  float maxTemp = min_and_max_temp[1];
+  float ratio = (temp - minTemp) / (maxTemp - minTemp); 
+  
+  float r;
+  if (ratio >= 0.66) {
+    r = 255;
+  } else if (ratio >= 0.33) {
+    r = 255;
+  } else {
+    r = 255 * ratio / 0.33;
+  }
+  uint8_t int_r = r;
+  return int_r;
+}
+
+// 將單一 pixel 的溫度值，轉變成 G
+uint8_t mapValueToColor_g(float temp, float * min_and_max_temp) {
+  float minTemp = min_and_max_temp[0];
+  float maxTemp = min_and_max_temp[1];
+  float ratio = (temp - minTemp) / (maxTemp - minTemp); 
+  
+  float g;
+  if (ratio >= 0.66) {
+    g = 255 * (1 - (ratio - 0.66) / 0.34);
+  } else if (ratio >= 0.33) {
+    g = 255 * (ratio - 0.33) / 0.33;  // 修改此处使绿色显示较少
+  } else {
+    g = 255;
+  }
+  uint8_t int_g = g;
+
+  return int_g;
+}
+
+// 將單一 pixel 的溫度值，轉變成 B
+uint8_t mapValueToColor_b(float temp, float * min_and_max_temp) {
+  float minTemp = min_and_max_temp[0];
+  float maxTemp = min_and_max_temp[1];
+  float ratio = (temp - minTemp) / (maxTemp - minTemp); 
+  
+  float b;
+  if (ratio >= 0.66) {
+    b = 255 * (1 - (ratio - 0.66) / 0.34);
+  } else if (ratio >= 0.33) {
+    b = 0;
+  } else {
+    b = 255 * (1 - ratio / 0.33);  // 修改此处使蓝色更深
+  }
+  uint8_t int_b = b;
+
+  return int_b;
+}
+
+// 將溫度的 pixel 轉換成 RGB888
+void MLX90640_thermal_to_rgb888(float * thermal_buf, uint8_t * rgb888_buf, float * min_and_max_temp){  
+
+  for (int i = 0; i < 768; i++) {
+    float temperature = thermal_buf[i];
+    uint8_t r = mapValueToColor_r(temperature, min_and_max_temp);
+    uint8_t g = mapValueToColor_g(temperature, min_and_max_temp);
+    uint8_t b = mapValueToColor_b(temperature, min_and_max_temp);
+   
+    rgb888_buf[i * 3] = b;  
+    rgb888_buf[i * 3 + 1] = g;  
+    rgb888_buf[i * 3 + 2] = r; 
+  }
 }

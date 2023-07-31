@@ -1,0 +1,26 @@
+    uint8_t * jpg_buf_esp_and_thermal = NULL;
+    size_t jpg_size = 0;
+    if(!fmt2jpg(buf_after_addition, 
+                EI_CAMERA_RAW_FRAME_BUFFER_COLS*EI_CAMERA_RAW_FRAME_BUFFER_ROWS*EI_CAMERA_FRAME_BYTE_SIZE, 
+                320, 
+                240, 
+                PIXFORMAT_RGB888, 
+                31, 
+                &jpg_buf_esp_and_thermal, 
+                &jpg_size)){Serial.println("Converted esp JPG size: " + String(jpg_size) + " bytes");}
+
+    // 將照片存進 SD card
+    bool whether_to_check_memory_usage = false;
+    if(Serial.available()>0){
+      char receivedChar = Serial.read();
+      if (receivedChar == '1'){
+        Serial.println("Enter '1' in serial, save esp and thermal image addition to SD card");
+        char filename[32];
+        sprintf(filename, "/%d_image.jpg", imageCount);
+        write_file_jpg(SD, filename, jpg_buf_esp_and_thermal, jpg_size);
+        whether_to_check_memory_usage = true;
+        imageCount ++;
+      }
+    }
+    if (whether_to_check_memory_usage == true){logMemory();} // 查看記憶體使用量
+    free(jpg_buf_esp_and_thermal);

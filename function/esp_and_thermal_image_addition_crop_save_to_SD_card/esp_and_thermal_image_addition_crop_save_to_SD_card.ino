@@ -1,7 +1,10 @@
 /* Includes ---------------------------------------------------------------- */
 #include <XIAO-ESP32-Person-and-bottle-detection_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
+#include <Adafruit_MLX90640.h>
 
+#include <WiFi.h>
+#include <WebServer.h>
 #include "esp_camera.h"
 #include "esp_timer.h"
 #include "img_converters.h"
@@ -12,16 +15,34 @@
 #include <FS.h>   // SD Card ESP32
 #include "SD.h"   // SD Card ESP32
 #include "SPI.h"
-#include <string>
 #include "Esp.h"
 
 #include "Arduino.h"
 
+#include "mlx90640_thermal_processing.hpp"
 
-uint8_t * rgb888_buf_320x240_esp32 = (uint8_t *)malloc(320*240*3);;
-uint8_t * rgb888_buf_640x480_esp32 = (uint8_t *)malloc(640*480*3);;
-camera_fb_t * fb = NULL;
-size_t imageCount = 0;
+// 定義變數
+float * mlx90640To                       = (float *) malloc(32 * 24 * sizeof(float));
+float * minTemp_and_maxTemp_and_aveTemp  = (float *) malloc(3 * sizeof(float));
+uint8_t * rgb888_buf_32x24_mlx90640      = (uint8_t *) malloc(32 * 24 * 3 * sizeof(uint8_t));
+uint8_t * rgb888_buf_320x240_mlx90640    = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+
+camera_fb_t * fb                         = NULL;
+uint8_t * rgb888_buf_320x240_esp32       = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+uint8_t * rgb888_buf_640x480_esp32       = (uint8_t *) malloc(640 * 480 * 3 * sizeof(uint8_t));
+
+uint8_t * rgb888_buf_320x240_esp_and_thermal_addition = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+
+int imageCount                           = 0;
+
+Adafruit_MLX90640 mlx; 
+
+// 宣告函數
+void logMemory();
+void two_image_addition();
+void esp_and_thermal_image_addition_save_to_SD_card();
+void configInitCamera();
+
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 #if defined(CAMERA_MODEL_XIAO_ESP32S3)
@@ -47,6 +68,7 @@ size_t imageCount = 0;
 #else
 #error "Camera model not selected"
 #endif
+
 
 
 void setup() {
@@ -87,58 +109,112 @@ void setup() {
           Serial.println("PSRAM does not work");
   }
 
+  // MLX90640 setup
+  if (!mlx.begin()) {
+    Serial.println("Failed to initialize MLX90640!");
+    while (1);
+  }else{Serial.println("MLX90640 initialized!");}
+
   configInitCamera();
 }
 
 void loop() {
-
+  
   bool whether_to_check_memory_usage = false;
 
-  Serial.println("Capture a photo using esp32");
-  char filename[32];
-  sprintf(filename, "/%d_image.jpg", imageCount);
-  capture_and_crop_save_to_SD_card(filename);
-  whether_to_check_memory_usage = true;
-  imageCount ++;
-    
-  logMemory();
+  if(Serial.available()>0){
+    char receivedChar = Serial.read();
+    if (receivedChar == '1'){
+      Serial.println("Ready to save esp and thermal image addition to SD card");
+      char filename[32];
+      sprintf(filename, "/%d_image.jpg", imageCount);
+      esp_and_thermal_image_addition_save_to_SD_card(filename);
+      whether_to_check_memory_usage = true;
+      imageCount ++;
+    }
+  }
+  if (whether_to_check_memory_usage == true){logMemory();}
   
-  delay(10000);
+  delay(100);
 }
+
 
 void logMemory() {
   Serial.println("Used RAM: " + String(ESP.getHeapSize() - ESP.getFreeHeap()) + " bytes");
   Serial.println("Used PSRAM: " + String(ESP.getPsramSize() - ESP.getFreePsram()) + " bytes");
 }
 
-void capture_and_crop_save_to_SD_card(const char * file_dir){
+void two_image_addition(uint8_t * srcImage1, 
+                        float srcProportion1, 
+                        uint8_t * srcImage2, 
+                        float srcProportion2, 
+                        uint8_t *dstImage, 
+                        uint16_t width, 
+                        uint16_t height, 
+                        uint16_t channels)
+{
+  // 如果 兩張照片的透明比例相加不等於 1，則讓他們調整為相加等於 1
+  if (srcProportion1 + srcProportion2 != 1){
+      float sumProportion = (srcProportion1 + srcProportion2);
+      srcProportion1 = srcProportion1 + (sumProportion/2);
+      srcProportion2 = srcProportion2 + (sumProportion/2);
+  }
   
-  uint8_t * jpg_buf = NULL;
-  size_t jpg_size = 0;
+  for(int i = 0; i < width*height*channels; i++){
+    srcImage1[i] = srcImage1[i] * srcProportion1;
+    srcImage2[i] = srcImage2[i] * srcProportion2;
+  }
 
-  // 清空照片的 buffer
+  for(int i = 0; i < width*height*channels; i++){
+    dstImage[i] = srcImage1[i] + srcImage2[i];
+  }
+}
+
+void esp_and_thermal_image_addition_save_to_SD_card(const char * file_dir){
+  // define variable
+  uint8_t * jpg_buf_esp_and_thermal = NULL;
+  size_t jpg_size = 0;
+  
+
+  // 處理 thermal 相片
+  mlx.getFrame(mlx90640To); // get thermal buffer
+  find_min_max_average_temp(mlx90640To, minTemp_and_maxTemp_and_aveTemp);
+  MLX90640_thermal_to_rgb888(mlx90640To, rgb888_buf_32x24_mlx90640, minTemp_and_maxTemp_and_aveTemp); 
+  ei::image::processing::resize_image(rgb888_buf_32x24_mlx90640, 32, 24, rgb888_buf_320x240_mlx90640, 320, 240, 3);
+
+  // 拍攝 esp 相片
   fb = esp_camera_fb_get();
   esp_camera_fb_return(fb);  // dispose the buffered image
   fb = NULL; // reset to capture errors
-
-  // 拍照
   fb = esp_camera_fb_get(); // 拍一張照片（將照片放進照片緩衝區）
   if (!fb) {
-    Serial.println("Camera capture failed");}
-
-  fmt2rgb888(fb->buf, fb->len, fb->format, rgb888_buf_320x240_esp32);
+    Serial.println("Camera capture failed");
+  }else {Serial.println("Camera capture ont shot");}
+  if(!fmt2rgb888(fb->buf, fb->len, fb->format, rgb888_buf_320x240_esp32)){Serial.println("fmt2jpg function failed");};
   ei::image::processing::resize_image(rgb888_buf_320x240_esp32, 320, 240, rgb888_buf_640x480_esp32, 640, 480, 3);
-  ei::image::processing::crop_image_rgb888_packed(rgb888_buf_640x480_esp32, 640, 480, 160, 120, rgb888_buf_320x240_esp32, 320, 240);
-  fmt2jpg(rgb888_buf_320x240_esp32, 320*240*3, 320, 240, PIXFORMAT_RGB888, 31, &jpg_buf, &jpg_size);
-
-  writeFile(SD, file_dir, jpg_buf, jpg_size);
+  ei::image::processing::crop_image_rgb888_packed(rgb888_buf_640x480_esp32, 640, 480, 160, 180, rgb888_buf_320x240_esp32, 320, 240);
   
-  // release image
-  esp_camera_fb_return(fb); 
-  fb = NULL;
-  free(jpg_buf);
-  jpg_buf = NULL;
+  // 相加照片
+  two_image_addition(rgb888_buf_320x240_esp32, 
+                      0.5, 
+                      rgb888_buf_320x240_mlx90640, 
+                      0.5, 
+                      rgb888_buf_320x240_esp_and_thermal_addition, 
+                      320, 
+                      240, 
+                      3);
+  
+  if(!fmt2jpg(rgb888_buf_320x240_esp_and_thermal_addition, 320*240*3, 320, 240, PIXFORMAT_RGB888, 31, &jpg_buf_esp_and_thermal, &jpg_size)){
+    Serial.println("Converted esp JPG size: " + String(jpg_size) + " bytes");}
+  
+  // Save photo to SD card
+  writeFile(SD, file_dir, jpg_buf_esp_and_thermal, jpg_size); 
+  
+  // release buffer
+  free(jpg_buf_esp_and_thermal);
   jpg_size = 0;
+  esp_camera_fb_return(fb);  // dispose the buffered image
+  fb = NULL; // reset to capture errors
 }
 
 // SD card write file
@@ -192,8 +268,6 @@ void configInitCamera(){
     return;
     //ESP.restart();
   }
-
-
   sensor_t * s = esp_camera_sensor_get();
   s->set_brightness(s, 0);     // -2 to 2
   s->set_contrast(s, 0);       // -2 to 2

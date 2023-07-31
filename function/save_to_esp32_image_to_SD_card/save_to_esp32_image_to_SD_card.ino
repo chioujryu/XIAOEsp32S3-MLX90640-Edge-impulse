@@ -1,7 +1,10 @@
 /* Includes ---------------------------------------------------------------- */
 #include <XIAO-ESP32-Person-and-bottle-detection_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
+#include <Adafruit_MLX90640.h>
 
+#include <WiFi.h>
+#include <WebServer.h>
 #include "esp_camera.h"
 #include "esp_timer.h"
 #include "img_converters.h"
@@ -12,16 +15,12 @@
 #include <FS.h>   // SD Card ESP32
 #include "SD.h"   // SD Card ESP32
 #include "SPI.h"
-#include <string>
 #include "Esp.h"
 
 #include "Arduino.h"
 
-
-uint8_t * rgb888_buf_320x240_esp32 = (uint8_t *)malloc(320*240*3);;
-uint8_t * rgb888_buf_640x480_esp32 = (uint8_t *)malloc(640*480*3);;
-camera_fb_t * fb = NULL;
-size_t imageCount = 0;
+camera_fb_t * fb           = NULL;
+size_t imageCount          = 0;
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 #if defined(CAMERA_MODEL_XIAO_ESP32S3)
@@ -44,10 +43,16 @@ size_t imageCount = 0;
 #define PCLK_GPIO_NUM     13
 
 #define LED_GPIO_NUM      21
+
 #else
 #error "Camera model not selected"
 #endif
 
+// 宣告函數
+void logMemory();
+void esp32_capture();
+void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len);
+void configInitCamera();
 
 void setup() {
   // put your setup code here, to run once:
@@ -88,22 +93,26 @@ void setup() {
   }
 
   configInitCamera();
+
+  logMemory();
 }
 
 void loop() {
 
   bool whether_to_check_memory_usage = false;
 
-  Serial.println("Capture a photo using esp32");
-  char filename[32];
-  sprintf(filename, "/%d_image.jpg", imageCount);
-  capture_and_crop_save_to_SD_card(filename);
-  whether_to_check_memory_usage = true;
-  imageCount ++;
-    
-  logMemory();
-  
-  delay(10000);
+  if(Serial.available()>0){
+    char receivedChar = Serial.read();
+    if (receivedChar == '1'){
+      Serial.println("Capture a photo using esp32");
+      char filename[32];
+      sprintf(filename, "/%d_image.jpg", imageCount);
+      esp32_capture_and_save_to_SD_card(filename);
+      whether_to_check_memory_usage = true;
+      imageCount ++;
+    }
+  }
+  if (whether_to_check_memory_usage == true){logMemory();}
 }
 
 void logMemory() {
@@ -111,37 +120,24 @@ void logMemory() {
   Serial.println("Used PSRAM: " + String(ESP.getPsramSize() - ESP.getFreePsram()) + " bytes");
 }
 
-void capture_and_crop_save_to_SD_card(const char * file_dir){
-  
-  uint8_t * jpg_buf = NULL;
-  size_t jpg_size = 0;
-
-  // 清空照片的 buffer
+void esp32_capture_and_save_to_SD_card(const char * file_dir){
+  // release buffer
   fb = esp_camera_fb_get();
   esp_camera_fb_return(fb);  // dispose the buffered image
   fb = NULL; // reset to capture errors
 
-  // 拍照
+  // capture
   fb = esp_camera_fb_get(); // 拍一張照片（將照片放進照片緩衝區）
-  if (!fb) {
-    Serial.println("Camera capture failed");}
+  if (!fb) { Serial.println("Camera capture failed");}
 
-  fmt2rgb888(fb->buf, fb->len, fb->format, rgb888_buf_320x240_esp32);
-  ei::image::processing::resize_image(rgb888_buf_320x240_esp32, 320, 240, rgb888_buf_640x480_esp32, 640, 480, 3);
-  ei::image::processing::crop_image_rgb888_packed(rgb888_buf_640x480_esp32, 640, 480, 160, 120, rgb888_buf_320x240_esp32, 320, 240);
-  fmt2jpg(rgb888_buf_320x240_esp32, 320*240*3, 320, 240, PIXFORMAT_RGB888, 31, &jpg_buf, &jpg_size);
-
-  writeFile(SD, file_dir, jpg_buf, jpg_size);
+  writeFile(SD, file_dir, fb->buf, fb->len);
   
-  // release image
-  esp_camera_fb_return(fb); 
+  // release buffer
+  esp_camera_fb_return(fb);
   fb = NULL;
-  free(jpg_buf);
-  jpg_buf = NULL;
-  jpg_size = 0;
 }
 
-// SD card write file
+// =======SD card write file=======
 void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len){
   
   Serial.printf("Writing file: %s\n", path);
@@ -190,9 +186,7 @@ void configInitCamera(){
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x \n", err);
     return;
-    //ESP.restart();
   }
-
 
   sensor_t * s = esp_camera_sensor_get();
   s->set_brightness(s, 0);     // -2 to 2

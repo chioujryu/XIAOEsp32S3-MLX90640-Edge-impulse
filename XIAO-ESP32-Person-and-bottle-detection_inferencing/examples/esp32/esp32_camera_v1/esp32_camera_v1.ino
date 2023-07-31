@@ -23,45 +23,52 @@
 /* Includes ---------------------------------------------------------------- */
 #include <XIAO-ESP32-Person-and-bottle-detection_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
-#include <Adafruit_MLX90640.h> 
 
-#include <WiFi.h>
-#include <WebServer.h>
 #include "esp_camera.h"
-#include "soc/soc.h"           // Disable brownour problems
-#include "soc/rtc_cntl_reg.h"  // Disable brownour problems
-#include "driver/rtc_io.h"
-#include <SPIFFS.h>
-#include <FS.h>   // SD Card ESP32
-#include "SD.h"   // SD Card ESP32
-#include "SPI.h"
-#include "webpage.h"
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
 
-#define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
+#define CAMERA_MODEL_ESP_EYE // Has PSRAM
+//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
 
-#if defined(CAMERA_MODEL_XIAO_ESP32S3)
-#define PWDN_GPIO_NUM     -1
+#if defined(CAMERA_MODEL_ESP_EYE)
+#define PWDN_GPIO_NUM    -1
+#define RESET_GPIO_NUM   -1
+#define XCLK_GPIO_NUM    4
+#define SIOD_GPIO_NUM    18
+#define SIOC_GPIO_NUM    23
+
+#define Y9_GPIO_NUM      36
+#define Y8_GPIO_NUM      37
+#define Y7_GPIO_NUM      38
+#define Y6_GPIO_NUM      39
+#define Y5_GPIO_NUM      35
+#define Y4_GPIO_NUM      14
+#define Y3_GPIO_NUM      13
+#define Y2_GPIO_NUM      34
+#define VSYNC_GPIO_NUM   5
+#define HREF_GPIO_NUM    27
+#define PCLK_GPIO_NUM    25
+
+#elif defined(CAMERA_MODEL_AI_THINKER)
+#define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM     10
-#define SIOD_GPIO_NUM     40
-#define SIOC_GPIO_NUM     39
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
 
-#define Y9_GPIO_NUM       48
-#define Y8_GPIO_NUM       11
-#define Y7_GPIO_NUM       12
-#define Y6_GPIO_NUM       14
-#define Y5_GPIO_NUM       16
-#define Y4_GPIO_NUM       18
-#define Y3_GPIO_NUM       17
-#define Y2_GPIO_NUM       15
-#define VSYNC_GPIO_NUM    38
-#define HREF_GPIO_NUM     47
-#define PCLK_GPIO_NUM     13
-
-#define LED_GPIO_NUM      21
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
 
 #else
 #error "Camera model not selected"
@@ -72,39 +79,10 @@
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
 #define EI_CAMERA_FRAME_BYTE_SIZE                 3
 
-/* Address defines -------------------------------------------------------- */
-#define FILE_PHOTO "/photo.jpg"  // Photo File Name to save in SPIFFS，定義一個空白的jpg檔案
-#define FILE_PHOTO_THERMAL "/thermal_photo.jpg"
-#define FILE_BUFFER_THERMAL "/photo.txt"
-
-/* Put your SSID & Password  ----------------------------------------------- */
-const char* ssid = "test";  // Enter SSID here
-const char* password = "test@1213";  //Enter Password here
-const char* AP_ssid = "chioujryu";  // Enter SSID here
-const char* AP_password = "123";  //Enter Password here
-
-/* instantiation   --------------------------------------------------------- */
-WebServer server(80);  //創建 server 實例
-Adafruit_MLX90640 mlx;// 創建 MLX90640實例
-
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
 uint8_t *snapshot_buf; //points to the output of the capture
-float *thermal_buf; //points to the output of the thermal
-uint8_t *adding_image_buf; //points to the output of the adding image
-uint8_t *jpg_buf;
-size_t jpg_size = 0;
-
-boolean takeNewPhoto = false;   
-boolean savePhotoSD = false;    
-bool camera_sign = false;          // Check camera status
-bool sd_sign = false;              // Check sd status
-int imageCount = 1;                // File Counter
-
-float minTemp = 100;  // max temperature
-float maxTemp = 0;    // min temperature
-char val; 
 
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -137,123 +115,12 @@ static camera_config_t camera_config = {
     .fb_count = 1,       //if more than one, i2s runs in continuous mode. Use only with JPEG
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
-    
 };
 
 /* Function definitions ------------------------------------------------------- */
 bool ei_camera_init(void);
 void ei_camera_deinit(void);
 bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
-
-
-
-
-/* HTML ------------------------------------------------------- */
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Thermal Image</title>
-  <style>
-    canvas {
-      border: 1px solid black;
-    }
-    #container {
-      display: flex;
-    }
-    #temperatureValues {
-      margin-left: 16px;
-    }
-  </style>
-</head>
-
-<body>
-  <div id="container">
-    <canvas id="thermalCanvas" width="320" height="240"></canvas>  
-    <div id="temperatureValues">
-      <p>Max: <span id="maxValue"></span>℃</p>
-      <p>Min: <span id="minValue"></span>℃</p>
-      <p>Average: <span id="avgValue"></span>℃</p>
-    </div>
-  </div>
-  <script>
-    const canvas = document.getElementById('thermalCanvas');
-    const ctx = canvas.getContext('2d'); // '2d' 引數表示要創建 2D 繪圖環境。
-    const imgData = ctx.createImageData(32, 24);  // 這行程式碼將從繪圖環境 ctx 創建一個新的空白圖像數據對象 imgData，其寬度為 32 像素，高度為 24 像素。
-    const maxValueElement = document.getElementById('maxValue');  // 這行程式碼將具有 ID 屬性值為 'maxValue' 的 HTML 元素存儲在一個常量 maxValueElement 中。在稍後的程式碼中，可以使用 maxValueElement 讀取或修改該元素的內容或屬性。
-    const minValueElement = document.getElementById('minValue');  // 這行程式碼將具有 ID 屬性值為 'minValue' 的 HTML 元素存儲在一個常量 minValueElement 中。在稍後的程式碼中，可以使用 maxValueElement 讀取或修改該元素的內容或屬性。
-    const avgValueElement = document.getElementById('avgValue');  // 這行程式碼將具有 ID 屬性值為 'avgValue' 的 HTML 元素存儲在一個常量 avgValueElement 中。在稍後的程式碼中，可以使用 maxValueElement 讀取或修改該元素的內容或屬性。
-    let maxValue, minValue; // let：這是一個關鍵字，用於定義一個變數。與 var 不同，使用 let 定義的變數是區塊級別的，即只在該變數聲明所在的區塊中有效。
-    
-    function updateThermalImage(data) {  // function 是 JavaScript 中的一個關鍵字，用於定義一個函數。在這個程式碼中，function 用於定義一個名稱為 updateThermalImage 的函數，並接受一個名為 data 的參數。
-      maxValue = Math.max(...data); // ...data 是展開運算符(spread operator),代表將陣列 data 展開為一個參數列表
-      minValue = Math.min(...data); // ...data 是展開運算符(spread operator),代表將陣列 data 展開為一個參數列表
-      const avgValue = data.reduce((sum, value) => sum + value, 0) / data.length;   // "data.reduce((sum, value) => sum + value, 0)"  這是 JavaScript 寫法，用於把數組裡值全部相加 
-
-
-      // 這行程式碼是用來將熱像圖中的最大值顯示在 HTML 文檔中。以下是程式碼的詳細解釋：
-      maxValueElement.textContent = maxValue.toFixed(2);  // 將 maxValue 賦值給 textContent 屬性，toFixed(2) 將最大值轉換為帶有兩位小數的字符串。
-      minValueElement.textContent = minValue.toFixed(2);  // 將 minValue 賦值給 textContent 屬性，toFixed(2) 將最大值轉換為帶有兩位小數的字符串。
-      avgValueElement.textContent = avgValue.toFixed(2);  // 將 avgValue 賦值給 textContent 屬性，toFixed(2) 將最大值轉換為帶有兩位小數的字符串。
-
-      // 將 RGB Pixel 放置 imgData.data 
-      for (let i = 0; i < data.length; i++) {
-        const value = data[i];
-        const color = mapValueToColor(value);
-        imgData.data[i * 4] = color.r;   // imgData.data 是裡面有 24 x 32 x 4 個數值的 陣列
-        imgData.data[i * 4 + 1] = color.g;  // imgData.data 是裡面有 24 x 32 x 4 個數值的 陣列
-        imgData.data[i * 4 + 2] = color.b;  // imgData.data 是裡面有 24 x 32 x 4 個數值的 陣列
-        imgData.data[i * 4 + 3] = 255;  // imgData.data 是裡面有 24 x 32 x 4 個數值的 陣列，這是 alpha 透明度值
-      }
-    
-      // 創建離屏畫布並設置縮放和平滑
-      const offscreenCanvas = new OffscreenCanvas(320, 240);  // 這是 HTML5 新增的一個 API，用於創建一個離屏畫布，即不顯示在網頁上的畫布。它可以在後台進行渲染，從而提高性能。
-      const offscreenCtx = offscreenCanvas.getContext('2d');   // 這是離屏畫布的 2D 上下文對象。
-      offscreenCtx.imageSmoothingEnabled = false; // 用於設置圖像是否進行平滑處理。在這個例子中，它被設置為 false，即不進行平滑處理。
-      offscreenCtx.putImageData(imgData, 0, 0);  // putImageData() 函數的作用是,將imgData中的圖像數據放置到offscreenCtx所代表的畫布上，0,0 是代表放置的起始位置,即圖像數據被放置到畫布的左上角(0,0)位置，即左上角
-      offscreenCtx.drawImage(offscreenCanvas, 0, 0, 32, 24, 0, 0, 320, 240);  // 用於將一個畫布、圖像或視頻繪製到另一個畫布上。在這個例子中，它被用於將離屏畫布縮放到 320 x 240 的大小，然後繪製到顯示畫布上。0,0 指定畫布上繪製的起始位置
-    
-      // 將離屏畫布的內容繪製到顯示畫布上
-      ctx.drawImage(offscreenCanvas, 0, 0);
-    }
-
-    
-    function mapValueToColor(value) {
-      const ratio = (value - minValue) / (maxValue - minValue); // 這是計算數值在最小值和最大值之間所佔的比例。它等於 (value - minValue) / (maxValue - minValue)。
-
-      let r, g, b;
-      if (ratio >= 0.66) {
-        r = 255;
-        g = 255 * (1 - (ratio - 0.66) / 0.34);
-        b = 255 * (1 - (ratio - 0.66) / 0.34);
-      } else if (ratio >= 0.33) {
-        r = 255;
-        g = 255 * (ratio - 0.33) / 0.33;  // 修改此处使绿色显示较少
-        b = 0;
-      } else {
-        r = 255 * ratio / 0.33;
-        g = 255;
-        b = 255 * (1 - ratio / 0.33);  // 修改此处使蓝色更深
-      }
-
-      return { r: r, g: g, b: b };  // 返回一個物件(對象),包含 r(紅)、 g(綠)、 b(藍)這三個屬性
-    }
-
-    async function requestData() {
-      const response = await fetch('/thermal_data');
-      const data = await response.text();
-      const values = data.split(',').map(parseFloat);
-      updateThermalImage(values);
-      setTimeout(requestData, 500);
-    }
-
-    requestData();
-  </script>
-</body>
-</html>
-)rawliteral";
-
 
 /**
 * @brief      Arduino setup function
@@ -272,80 +139,8 @@ void setup()
         ei_printf("Camera initialized\r\n");
     }
 
-    // Wire begin
-    Wire.begin(); 
-    Wire.setClock(400000); // Wire.setClock(400000) 設置 I2C 時鐘速率為 400 kHz，這是 I2C 協議的標準速率之一，通常用於高速數據傳輸。
-
-
-    // Mounting SPIFFS，啟用 SPIFFS 檔案系統的意思
-    if (!SPIFFS.begin(true)) 
-    {
-      Serial.println("An Error has occurred while mounting SPIFFS");
-      ESP.restart();
-    }
-    else 
-    {
-      delay(500);
-      Serial.println("SPIFFS mounted successfully");
-    }
-  
-    // MLX90640 IR Cam setup
-    if (!mlx.begin()) {
-      Serial.println("Failed to initialize MLX90640!");
-      while (1);
-    }
-   
-    // Connect to local wi-fi network
-    Serial.println("Connecting to ");
-    Serial.println(ssid);
-    WiFi.begin(ssid, password); // 啟動 wi-fi
-  
-    // check wi-fi is connected to wi-fi networ
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.print(".");
-    }
-    Serial.println("");
-    Serial.println("WiFi connected..!");
-    Serial.print("Got IP: ");  
-    Serial.println(WiFi.localIP());
-
-    // 綁定http請求的回調函數
-    server.on("/", handle_OnConnect);
-    //server.on("/capture", ei_camera_capture);   // 讓他一直拍
-    server.on("/save", handle_save);
-    server.on("/saved_esp32_photo", []() {getSpiffImg(FILE_PHOTO, "image/jpg");});
-    server.on("/saved_thermal_photo", []() {getSpiffImg(FILE_PHOTO_THERMAL, "image/jpg");});
-    server.onNotFound(handle_NotFound);  // http請求不可用時的回調函數
-    
-    server.begin(); // 開啓WebServer功能
-    Serial.println("HTTP server started");
-
-
-    // Showing Starting continious inference in 2 seconds...
     ei_printf("\nStarting continious inference in 2 seconds...\n");
     ei_sleep(2000);
-}
-
-void handle_OnConnect() {
-  server.send(200, "text/html", index_html);  // 傳網頁上去
-}
-void handle_save() {
-  savePhotoSD = true;
-  Serial.println("Saving Image to SD Card");
-  server.send(200, "text/plain", "Saving Image to SD Card"); 
-}
-void handle_NotFound(){
-  server.send(404, "text/plain", "Not found");
-}
-void getSpiffImg(String path, String TyPe) 
-{ 
-  if(SPIFFS.exists(path))
-  { 
-    File file = SPIFFS.open(path, "r");
-    server.streamFile(file, TyPe);  // 串流返回文件。
-    file.close();
-  }
 }
 
 /**
@@ -361,13 +156,7 @@ void loop()
         return;
     }
 
-    server.handleClient();  // WebServer 監聽客戶請求並處理
-
     snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-    thermal_buf = (float*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-    adding_image_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-    jpg_buf = (uint8_t*)malloc(15000);
-    jpg_size = 0;
 
     // check if allocation was successful
     if(snapshot_buf == nullptr) {
@@ -384,41 +173,6 @@ void loop()
         free(snapshot_buf);
         return;
     }
-
-    /*
-    if (takeNewPhoto) 
-    {
-      captureESP32PhotoSaveSpiffs();
-      captureThermalPhotoSaveSpiffs();
-      //takeNewPhoto = false;
-    }
-
-    if (savePhotoSD) 
-    {
-      // save esp32 photo
-      char filename[32];
-      sprintf(filename, "/%d_esp32_image.jpg", imageCount);  // filename 會等於 "/image1.jpg"、 "/image2.jpg" ....
-      esp32_photo_save_to_SD_card(filename);
-      Serial.printf("\nSaved picture：%s", filename);
-      
-      // save thermal photo
-      char filename_thermal_photo[32];
-      sprintf(filename_thermal_photo, "/%d_thermal_image.jpg", imageCount);  // filename 會等於 "/image1.jpg"、 "/image2.jpg" ....
-      thermal_photo_save_to_SD_card(filename_thermal_photo);
-      Serial.printf("\nSaved picture：%s", filename_thermal_photo);
-        
-      // save thermal buffer
-      char filename_thermal_buffer[32];
-      sprintf(filename_thermal_buffer, "/%d_thermal_32x24_buffer.txt", imageCount);  // filename 會等於 "/image1.jpg"、 "/image2.jpg" ....
-      thermal_buffer_save_to_SD_card(filename_thermal_buffer);
-      Serial.printf("\nSaved thermal buffer：%s", filename_thermal_buffer);
-      
-      imageCount++;  
-      savePhotoSD = false;      
-    }
-    */
-
-
 
     // Run the classifier
     ei_impulse_result_t result = { 0 };
@@ -458,12 +212,8 @@ void loop()
 
 
     free(snapshot_buf);
-    free(thermal_buf);
-    free(adding_image_buf);
-    free(jpg_buf);
-    
-}
 
+}
 
 /**
  * @brief   Setup image sensor & start streaming
@@ -553,7 +303,6 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
     }
 
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
-   
 
    esp_camera_fb_return(fb);
 
@@ -598,35 +347,6 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     }
     // and done!
     return 0;
-}
-
-void send_to_web(uint8_t * rgb888_buf, uint8_t * jpg_buf){
-
-  uint32_t fileSize = 0;
-  
-  fmt2jpg(rgb888_buf, 
-        EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE, 
-        EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-        EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-        PIXFORMAT_RGB888, 
-        31, 
-        &jpg_buf, 
-        &jpg_size);
-  
-  File file = SPIFFS.open(FILE_PHOTO, FILE_WRITE); // 將空白照片放進SPIFFS裡面
-  
-  // Insert the data in the photo file
-  if (!file) {
-  Serial.println("Failed to open file in writing mode");
-  }
-  else {
-  file.write(jpg_buf, jpg_size); // payload (image), payload length，將拍到的照片寫進空白照片裡面
-  }
-  
-  fileSize = file.size();   // 取得照片的大小
-  
-  file.close();   // 關閉照片
-  
 }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
