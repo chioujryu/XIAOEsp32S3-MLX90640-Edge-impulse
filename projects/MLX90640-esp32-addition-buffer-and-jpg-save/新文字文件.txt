@@ -1,0 +1,48 @@
+float * mlx90640To                       = (float *) malloc(32 * 24 * sizeof(float));
+float * minTemp_and_maxTemp_and_aveTemp  = (float *) malloc(3 * sizeof(float));
+uint8_t * rgb888_buf_32x24_mlx90640      = (uint8_t *) malloc(32 * 24 * 3 * sizeof(uint8_t));
+uint8_t * rgb888_buf_320x240_mlx90640    = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+
+camera_fb_t * frame_buffer               = NULL;
+uint8_t * rgb888_buf_320x240_esp32       = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+uint8_t * rgb888_buf_640x480_esp32       = (uint8_t *) malloc(640 * 480 * 3 * sizeof(uint8_t));
+
+uint8_t * rgb888_buf_320x240_esp_and_mlx90640_addition = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+
+
+const uint16_t CAMERA_RAW_FRAME_BUFFER_COLS         = 320
+const uint16_t CAMERA_RAW_FRAME_BUFFER_ROWS         = 240
+const uint16_t CAMERA_RESIZE_FRAME_BUFFER_COLS      = 640
+const uint16_t CAMERA_RESIZE_FRAME_BUFFER_ROWS      = 480
+const uint16_t MLX90640_RAW_FRAME_BUFFER_COLS       = 32
+const uint16_t MLX90640_RAW_FRAME_BUFFER_ROWS       = 24
+const uint16_t CAMERA_FRAME_BYTE_SIZE               = 3
+
+
+
+const String SPIFFS_FILE_PHOTO = "/photo.jpg";
+const String SPIFFS_FILE_PHOTO_THERMAL = "/thermal_photo.jpg";
+const String SPIFFS_FILE_BUFFER_THERMAL = "/photo.txt";
+
+const String SPIFFS_FILE_PHOTO = "/photo.jpg";
+const String SPIFFS_FILE_PHOTO_THERMAL = "/thermal_photo.jpg";
+const String SPIFFS_FILE_BUFFER_THERMAL = "/photo.txt";
+
+
+
+esp32_photo_save_to_SD_card(camera_fb_t * fb, const char * fileName, String spiff_file_dir)
+
+mlx90640_photo_save_to_SD_card( float * thermal_buf, 
+                                    uint8_t * rgb888_buf_32x24_thermal, 
+                                    uint8_t * rgb888_buf_320x240_thermal, 
+                                    uint16_t resized_width,
+                                    uint16_t resized_height,
+                                    float * max_min_ave_temp, 
+                                    const char * fileName,
+                                    String spiff_file_dir)
+
+mlx90640_thermal_buffer_save_to_SD_card(uint8_t * thermal_buf ,const char * fileName)
+
+
+
+
