@@ -144,12 +144,17 @@ void capture(const char * file_dir, uint8_t * rgb888_buf_320x240){
                             bounding_box_center_y, 
                             bounding_box_width, 
                             bounding_box_height,
-                            320,
-                            240,
+                            32,
+                            24,
                             &corrected_bb_x, 
                             &corrected_bb_y, 
                             &corrected_bb_width, 
                             &corrected_bb_height);
+                            
+  Serial.println("corrected_bb_x: " + String(corrected_bb_x) + " " +
+                 "corrected_bb_y: " + String(corrected_bb_y) + " " +
+                 "corrected_bb_width: " + String(corrected_bb_width) + " " +
+                 "corrected_bb_height: " + String(corrected_bb_height) + " ");
 
   // 畫 bounding box
   draw_bounding_box(rgb888_buf_320x240, 320, 240, 3, corrected_bb_x, corrected_bb_y, corrected_bb_width, corrected_bb_height);
@@ -257,10 +262,10 @@ void bounding_box_correction( uint16_t original_buf_width,
                               uint16_t * corrected_bb_width, 
                               uint16_t * corrected_bb_height)
 {
-  *corrected_bb_x = original_bb_x * (corrected_buf_width / original_buf_width);
-  *corrected_bb_y = original_bb_y * (corrected_buf_height / original_buf_height);
-  *corrected_bb_width = original_bb_width * (corrected_buf_width / original_buf_width);
-  *corrected_bb_height = original_bb_height * (corrected_buf_height / original_buf_height);
+  *corrected_bb_x = original_bb_x * ((float)corrected_buf_width / (float)original_buf_width);
+  *corrected_bb_y = original_bb_y * ((float)corrected_buf_height / (float)original_buf_height);
+  *corrected_bb_width = original_bb_width * ((float)corrected_buf_width / (float)original_buf_width);
+  *corrected_bb_height = original_bb_height * ((float)corrected_buf_height / (float)original_buf_height);
 }
 
 void configInitCamera(){

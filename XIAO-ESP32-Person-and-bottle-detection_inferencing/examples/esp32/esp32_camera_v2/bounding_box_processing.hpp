@@ -1,8 +1,22 @@
+// function declare
+void draw_bounding_box(uint8_t * image_buf, 
+                        uint16_t image_width, 
+                        uint16_t image_height, 
+                        uint8_t channels, 
+                        uint16_t bounding_box_center_x, 
+                        uint16_t bounding_box_center_y, 
+                        uint16_t bounding_box_width, 
+                        uint16_t bounding_box_height);
+
 // function Declaration
 uint32_t find_image_buffer_index( uint16_t image_width, 
                                   uint16_t x, 
                                   uint16_t y, 
                                   uint8_t channels);
+
+
+
+                                  
 void draw_pixel(uint8_t * image_buf, uint32_t index, uint8_t channels, uint8_t r, uint8_t g, uint8_t b);
 void bounding_box_correction( uint16_t original_buf_width, 
                               uint16_t original_buf_height, 
@@ -100,8 +114,8 @@ void bounding_box_correction( uint16_t original_buf_width,
                               uint16_t * corrected_bb_width, 
                               uint16_t * corrected_bb_height)
 {
-  *corrected_bb_x = original_bb_x * (corrected_buf_width / original_buf_width);
-  *corrected_bb_y = original_bb_y * (corrected_buf_height / original_buf_height);
-  *corrected_bb_width = original_bb_width * (corrected_buf_width / original_buf_width);
-  *corrected_bb_height = original_bb_height * (corrected_buf_height / original_buf_height);
+  *corrected_bb_x = original_bb_x * ((float)corrected_buf_width / (float)original_buf_width);
+  *corrected_bb_y = original_bb_y * ((float)corrected_buf_height / (float)original_buf_height);
+  *corrected_bb_width = original_bb_width * ((float)corrected_buf_width / (float)original_buf_width);
+  *corrected_bb_height = original_bb_height * ((float)corrected_buf_height / (float)original_buf_height);
 }

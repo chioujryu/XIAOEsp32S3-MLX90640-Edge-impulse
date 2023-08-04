@@ -34,9 +34,9 @@
 #include "Esp.h"
 
 #include "write_read_file.hpp"
-#include "mlx90640_thermal_processing.hpp"
 #include "image_processing.hpp"
 #include "bounding_box_processing.hpp"
+#include "mlx90640_thermal_processing.hpp"
 
 Adafruit_MLX90640 mlx; 
 
@@ -73,10 +73,14 @@ Adafruit_MLX90640 mlx;
 #endif
 
 /* Constant defines -------------------------------------------------------- */
-#define EI_CAMERA_RESIZED_FRAME_BUFFER_COLS       640
-#define EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS       480
+#define EI_CAMERA_RESIZED_FRAME_BUFFER_COLS       32*16
+#define EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS       24*16
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
+#define img_width_for_inference                   96
+#define img_height_for_inference                  96
+#define MLX90640_RAW_FRAME_BUFFER_COLS            32
+#define MLX90640_RAW_FRAME_BUFFER_ROWS            24
 #define EI_CAMERA_FRAME_BYTE_SIZE                 3
 
 /* Private variables ------------------------------------------------------- */
@@ -86,15 +90,15 @@ uint8_t * snapshot_buf                          = (uint8_t*)malloc(EI_CAMERA_RAW
 uint8_t * resized_snapshot_buf                  = (uint8_t*)malloc(EI_CAMERA_RESIZED_FRAME_BUFFER_COLS * EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 uint8_t * croped_snapshot_buf                   = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 uint8_t * buf_after_addition                    = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-float * mlx90640To                              = (float *) malloc(32 * 24 * sizeof(float));
+float * mlx90640To                              = (float *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * sizeof(float));
 float * minTemp_and_maxTemp_and_aveTemp         = (float *) malloc(3 * sizeof(float));
-uint8_t * rgb888_buf_32x24_mlx90640             = (uint8_t *) malloc(32 * 24 * 3 * sizeof(uint8_t));
-uint8_t * rgb888_buf_320x240_mlx90640           = (uint8_t *) malloc(320 * 240 * 3 * sizeof(uint8_t));
+float * min_max_ave_thermal_in_bd_box           = (float *) malloc(3 * sizeof(float));
+uint8_t * rgb888_raw_buf_mlx90640               = (uint8_t *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE * sizeof(uint8_t));
+uint8_t * rgb888_resized_buf_mlx90640           = (uint8_t *) malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE * sizeof(uint8_t));
 
 size_t imageCount = 0;
 
-uint16_t img_width_for_inference = 96;
-uint16_t img_height_for_inference = 96;
+
 
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -235,8 +239,9 @@ void loop()
                      32,
                      24,
                      minTemp_and_maxTemp_and_aveTemp, 
-                     rgb888_buf_32x24_mlx90640, 
-                     rgb888_buf_320x240_mlx90640);
+                     rgb888_raw_buf_mlx90640, 
+                     rgb888_resized_buf_mlx90640);
+   
 
     // esp32 拍照
     if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
@@ -258,8 +263,8 @@ void loop()
     ei::image::processing::crop_image_rgb888_packed(resized_snapshot_buf, 
                                                     EI_CAMERA_RESIZED_FRAME_BUFFER_COLS, 
                                                     EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS, 
-                                                    170, 
                                                     120, 
+                                                    100, 
                                                     croped_snapshot_buf, 
                                                     EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
                                                     EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
@@ -268,7 +273,7 @@ void loop()
     // 照片相加
     two_image_addition( croped_snapshot_buf, 
                         0.5, 
-                        rgb888_buf_320x240_mlx90640, 
+                        rgb888_resized_buf_mlx90640, 
                         0.5, 
                         buf_after_addition, 
                         EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
@@ -276,18 +281,19 @@ void loop()
                         EI_CAMERA_FRAME_BYTE_SIZE);
                         
 
-    // 確認拍照出來的照片是否跟要放進模型推論的照片大小有一致
+    // 確認照片是否跟要放進模型推論的照片大小有一致
     bool do_resize = false;
     if ((img_width_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
         || (img_height_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
         do_resize = true;
     }
+
     // 將照片縮小到推論的照片大小
     if(do_resize){
-      ei::image::processing::resize_image(snapshot_buf, 
+      ei::image::processing::resize_image(croped_snapshot_buf, 
                                           EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
                                           EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                          snapshot_buf, 
+                                          snapshot_buf,
                                           img_width_for_inference, 
                                           img_height_for_inference, 
                                           EI_CAMERA_FRAME_BYTE_SIZE);
@@ -320,7 +326,7 @@ void loop()
         uint16_t corrected_bb_width;
         uint16_t corrected_bb_height;
 
-        // 校正 bounding box
+        // 校正 bounding box，給圖片相加用
         bounding_box_correction(  img_width_for_inference, 
                                   img_height_for_inference, 
                                   bb.x, 
@@ -333,6 +339,11 @@ void loop()
                                   &corrected_bb_y, 
                                   &corrected_bb_width, 
                                   &corrected_bb_height);
+
+        // 改成固定 bounding box 的長跟寬
+        corrected_bb_width = 16*3;
+        corrected_bb_height = 16*3;
+        
         /*
         Serial.println("original bounding box x: " + String(bb.x) + "\n"
                        "original bounding box y: " + String(bb.x) + "\n"
@@ -342,6 +353,7 @@ void loop()
                        "corrected bounding box y: " + String(corrected_bb_y) + "\n"
                        "corrected bounding box width: " + String(corrected_bb_width) + "\n"
                        "corrected bounding box height: " + String(corrected_bb_height) + "\n");*/
+        
 
         // Draw Bounding box
         draw_bounding_box(buf_after_addition, 
@@ -352,6 +364,58 @@ void loop()
                           corrected_bb_y, 
                           corrected_bb_width, 
                           corrected_bb_height);
+                          
+
+        // 校正 bounding box，給尋找 bounding box 的溫度用
+        uint16_t bb_x_in_mlx90640;
+        uint16_t bb_y_in_mlx90640;
+        uint16_t bb_width_in_mlx90640;
+        uint16_t bb_height_in_mlx90640;
+        
+        bounding_box_correction(  EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                  EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                  corrected_bb_x, 
+                                  corrected_bb_y, 
+                                  corrected_bb_width, 
+                                  corrected_bb_height,
+                                  MLX90640_RAW_FRAME_BUFFER_COLS,
+                                  MLX90640_RAW_FRAME_BUFFER_ROWS,
+                                  &bb_x_in_mlx90640, 
+                                  &bb_y_in_mlx90640, 
+                                  &bb_width_in_mlx90640, 
+                                  &bb_height_in_mlx90640);
+  
+                     
+        Serial.println("original bounding box x: " + String(corrected_bb_x) + "\n"
+                       "original bounding box y: " + String(corrected_bb_y) + "\n"
+                       "original bounding box width: " + String(corrected_bb_width) + "\n"
+                       "original bounding box height: " + String(corrected_bb_height) + "\n"
+                       "bounding box x in mlx90640: " + String(bb_x_in_mlx90640) + "\n"
+                       "bounding box y in mlx90640: " + String(bb_y_in_mlx90640) + "\n"
+                       "bounding box width in mlx90640: " + String(bb_width_in_mlx90640) + "\n"
+                       "bounding box height in mlx90640: " + String(bb_height_in_mlx90640));
+                                  
+
+        // 在 bounding box 中找到溫度的最大, 最小, 平均值
+        find_min_max_average_thermal_in_bounding_box( mlx90640To, 
+                                                      32, 
+                                                      24,
+                                                      bb_x_in_mlx90640, 
+                                                      bb_y_in_mlx90640, 
+                                                      bb_width_in_mlx90640, 
+                                                      bb_height_in_mlx90640,
+                                                      min_max_ave_thermal_in_bd_box);
+        // 印出整體的溫度值
+        Serial.println("Thermal in whole enviroment ----- Min Temp:" + String(minTemp_and_maxTemp_and_aveTemp[0]) + " " +
+                       "Max Temp: " + String(minTemp_and_maxTemp_and_aveTemp[1]) + " " +
+                       "Ave Temp: " + String(minTemp_and_maxTemp_and_aveTemp[2]));
+                           
+                           
+        // 印出 bounding box 裡面的溫度
+        Serial.println("Thermal in bounding box ----- Min Temp:" + String(min_max_ave_thermal_in_bd_box[0]) + " " +
+                       "Max Temp: " + String(min_max_ave_thermal_in_bd_box[1]) + " " +
+                       "Ave Temp: " + String(min_max_ave_thermal_in_bd_box[2]));
+                          
     }
     if (!bb_found) {
         ei_printf("    No objects found\n");
@@ -372,14 +436,12 @@ void loop()
     size_t jpg_size = 0;
     if(!fmt2jpg(buf_after_addition, 
                 EI_CAMERA_RAW_FRAME_BUFFER_COLS*EI_CAMERA_RAW_FRAME_BUFFER_ROWS*EI_CAMERA_FRAME_BYTE_SIZE, 
-                320, 
-                240, 
+                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
                 PIXFORMAT_RGB888, 
                 31, 
                 &jpg_buf_esp_and_thermal_and_bb, 
                 &jpg_size)){Serial.println("Converted esp JPG size: " + String(jpg_size) + " bytes");}
-
-
 
     // 將照片存到 SD card
     bool whether_to_check_memory_usage = false;
@@ -398,6 +460,8 @@ void loop()
     if (whether_to_check_memory_usage == true){logMemory();}
     
     free(jpg_buf_esp_and_thermal_and_bb);
+    
+    logMemory(); // 紀錄記憶體用量
 }
 
 /**
@@ -434,6 +498,7 @@ bool ei_camera_init(void) {
     s->set_hmirror(s, 1);
 #elif defined(CAMERA_MODEL_XIAO_ESP32S3)
     s->set_vflip(s, 1);
+    s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
     s->set_awb_gain(s, 1);
 #elif defined(CAMERA_MODEL_ESP_EYE)
     s->set_vflip(s, 1);
@@ -544,9 +609,7 @@ void mlx90640_capture(float * thermal_buf,
                       uint8_t * rgb888_buf_32x24_thermal, 
                       uint8_t * rgb888_buf_320x240_thermal){
   mlx.getFrame(thermal_buf); // get thermal buffer
-
   find_min_max_average_temp(thermal_buf, thermal_buf_width, thermal_buf_height, min_and_max_and_ave_temp); // find min and max temparature
-
   MLX90640_thermal_to_rgb888(thermal_buf, rgb888_buf_32x24_thermal, min_and_max_and_ave_temp);
   ei::image::processing::resize_image(rgb888_buf_32x24_thermal, 32, 24, rgb888_buf_320x240_thermal, 320, 240, 3);
 }
