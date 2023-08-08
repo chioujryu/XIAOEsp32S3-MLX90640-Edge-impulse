@@ -1,0 +1,41 @@
+參數一  用在裸機
+const uint16_t CAMERA_RAW_FRAME_BUFFER_COLS         = 320;
+const uint16_t CAMERA_RAW_FRAME_BUFFER_ROWS         = 240;
+const uint16_t CAMERA_RESIZE_FRAME_BUFFER_COLS      = 32*16;
+const uint16_t CAMERA_RESIZE_FRAME_BUFFER_ROWS      = 24*16;
+const uint16_t MLX90640_RAW_FRAME_BUFFER_COLS       = 32;
+const uint16_t MLX90640_RAW_FRAME_BUFFER_ROWS       = 24;
+const uint16_t CAMERA_FRAME_BYTE_SIZE               = 3;
+
+    captureCorrectedESP32andMLX90640PhotoAdditionSaveToSpiffs(mlx90640To, 
+                                                              MLX90640_RAW_FRAME_BUFFER_COLS,
+                                                              MLX90640_RAW_FRAME_BUFFER_ROWS,
+                                                              rgb888_raw_buf_mlx90640,  
+                                                              rgb888_resized_buf_mlx90640, 
+                                                              CAMERA_RAW_FRAME_BUFFER_COLS,
+                                                              CAMERA_RAW_FRAME_BUFFER_ROWS,
+                                                              minTemp_and_maxTemp_and_aveTemp,
+                                                              frame_buffer,
+                                                              CAMERA_RAW_FRAME_BUFFER_COLS,
+                                                              CAMERA_RAW_FRAME_BUFFER_ROWS,
+                                                              rgb888_raw_buf_esp32,
+                                                              rgb888_resized_buf_esp32,
+                                                              32*16,
+                                                              24*16,
+                                                              120,
+                                                              100,
+                                                              rgb888_buf_esp_and_mlx90640_addition,
+                                                              SPIFFS_FILE_PHOTO);   
+
+
+參數二  用在三D列印外殼裡面
+
+
+
+
+  s->set_hmirror(s, 1);        // 0 = disable , 1 = enable
+  s->set_vflip(s, 0);          // 0 = disable , 1 = enable
+
+
+
+
