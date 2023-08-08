@@ -1,6 +1,5 @@
 
 
-                                  
 // 找出陣列中的最大溫度跟最小溫度
 void find_min_max_average_temp(float * buf, uint16_t width, uint16_t height, float * min_and_max_and_average){
 
@@ -25,11 +24,9 @@ void find_min_max_average_temp(float * buf, uint16_t width, uint16_t height, flo
   min_and_max_and_average[1] = maxTemp;
   min_and_max_and_average[2] = aveTemp;
 
-  /*
   Serial.println("minTemp: " + String(min_and_max_and_average[0]) + "  " +
                  "maxTemp: " + String(min_and_max_and_average[1]) + "  " +
                  "aveTemp: " + String(min_and_max_and_average[2]));
-  */
 }
 
 // 將單一 pixel 的溫度值，轉變成 R
@@ -102,56 +99,4 @@ void MLX90640_thermal_to_rgb888(float * thermal_buf, uint8_t * rgb888_buf, float
     rgb888_buf[i * 3 + 1] = g;  
     rgb888_buf[i * 3 + 2] = r; 
   }
-}
-
-
-
-void find_min_max_average_thermal_in_bounding_box(float * thermal_buf, 
-                                                  uint16_t thermal_buf_width, 
-                                                  uint16_t thermal_buf_height,
-                                                  uint16_t bounding_box_x, 
-                                                  uint16_t bounding_box_y, 
-                                                  uint16_t bounding_box_width, 
-                                                  uint16_t bounding_box_height,
-                                                  float * min_max_ave_thermal_in_bd_box)
-{
-  /*
-  * @brief 在 bounding box 中找到溫度的最大, 最小, 平均值
-  *
-  * @param thermal_buf 溫度的 buffer, 如果是用MLX90640, 那 buffer 的寬跟高會是 32 x 24
-  * @param thermal_buf_width 這是 buffer 的寬度
-  * @param thermal_buf_height 這是 buffer 的高度
-  * @param bounding_box_x 這是 bounding box x (左上角)
-  * @param bounding_box_y 這是 bounding box y (右上角)
-  * @param bounding_box_width 這是 bounding box 的寬度
-  * @param bounding_box_height 這是 bounding box 高度
-  * @param min_max_ave_thermal_in_bd_box 這是你最後要取得的最大, 最小, 平均值
-  */
-  if (bounding_box_x > thermal_buf_width || bounding_box_x < 0 || bounding_box_y > thermal_buf_height || bounding_box_y < 0){
-    Serial.println("center of bounding is wrong, the center need to in 32x24");
-    return;
-  }
-
-  // 獲取 bounding box 左上角的座標
-  uint16_t bd_box_topLeft_x = bounding_box_x;
-  uint16_t bd_box_topLeft_y = bounding_box_y;
-  uint16_t bd_box_topLeft_index = find_image_buffer_index(thermal_buf_width, bd_box_topLeft_x, bd_box_topLeft_y, 1); // 獲取 bounding box 左上角的座標，在 Buffer 的 index
-  Serial.println("bd_box_topLeft_index: " + String(bd_box_topLeft_index));
-
-  // define variable
-  float * bounding_box_buffer = (float *)malloc(bounding_box_width * bounding_box_height * sizeof(float));
-  
-  // 將 bounding box 裡面的溫度值取出來
-  for (size_t i = 0; i < bounding_box_height; i++){
-    for (size_t k = 0; k < bounding_box_width; k++){
-      bounding_box_buffer[(bounding_box_width * i) + k] = thermal_buf[bd_box_topLeft_index + (thermal_buf_width * i) + k];
-    }
-  }
-
-  // 找到 bounding box 裡面的溫度最小，最大，平均值
-  find_min_max_average_temp(bounding_box_buffer, bounding_box_width, bounding_box_height, min_max_ave_thermal_in_bd_box);
-
-  // release buffer
-  free(bounding_box_buffer);
-  bounding_box_buffer = NULL;
 }

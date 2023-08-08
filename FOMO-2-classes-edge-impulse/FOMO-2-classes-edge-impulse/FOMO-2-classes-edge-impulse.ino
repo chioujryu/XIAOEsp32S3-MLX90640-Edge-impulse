@@ -146,8 +146,8 @@ uint8_t * rgb888_resized_buf_mlx90640           = (uint8_t *) malloc(EI_CAMERA_R
 size_t imageCount = 0;
 
 const String SPIFFS_FILE_PHOTO_ESP = "/esp_photo.jpg";
-const String SPIFFS_FILE_PHOTO_THERMAL = "/thermal_photo.jpg";
-const String SPIFFS_FILE_PHOTO_THERMAL_ESP = "/thermal_esp_photo.jpg";
+const String SPIFFS_FILE_PHOTO_MLX90640 = "/thermal_photo.jpg";
+const String SPIFFS_FILE_PHOTO_MLX90640_ESP = "/thermal_esp_photo.jpg";
 
 // Put your SSID & Password
 const char* ssid = "test";  // Enter SSID here
@@ -156,8 +156,6 @@ const char* ap_ssid = "chioujryu";  // Enter SSID here
 const char* ap_password = "0123456789";  //Enter Password here
 bool ap_wifi_mode = false;
 
-bool savetoSD = false;
-bool savetospiffs = false;
 char file_name[256];
 
 
@@ -321,12 +319,12 @@ void setup()
 
     // http server
     server.on("/", handle_OnConnect);
-    server.on("/save", handle_save);
-    server.on("/getText", handleGetText);
-    server.on("/get_image", get_image);
-    //server.on("/saved_esp32_photo", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_ESP , "image/jpg");});
-    //server.on("/saved_thermal_photo", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_THERMAL , "image/jpg");});
-    server.on("/saved_thermal_esp32_addition_photo", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_THERMAL_ESP , "image/jpg");});
+    server.on("/esp32_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_ESP , "image/jpg");});
+    server.on("/mlx90640_esp32_addition_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_MLX90640_ESP , "image/jpg");});
+    server.on("/mlx90640_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_MLX90640 , "image/jpg");});
+    server.on("/getText_mintemp", handleGetText_min_temp);
+    server.on("/getText_maxtemp", handleGetText_max_temp);
+    server.on("/getText_avetemp", handleGetText_ave_temp);
     server.onNotFound(handle_NotFound);  // http請求不可用時的回調函數
     server.begin(); 
     Serial.println("HTTP server started");
@@ -337,7 +335,6 @@ void setup()
     ei_printf("\nStarting continious inference in 2 seconds...\n");
     ei_sleep(2000);
 }
-
 
 /**
 * @brief      Get data and run inferencing
@@ -382,7 +379,6 @@ void loop()
         return;
     }
 
-    
     // 將照片 放大
     ei::image::processing::resize_image(snapshot_buf, 
                                         EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
@@ -490,6 +486,34 @@ void loop()
                           corrected_bb_y, 
                           corrected_bb_width, 
                           corrected_bb_height);
+                         
+        
+        // 校正 bounding box，以獲取 mlx90640 的 bounding box thermal 溫度
+        bounding_box_correction(  img_width_for_inference, 
+                                  img_height_for_inference, 
+                                  bb.x, 
+                                  bb.y, 
+                                  bb.width, 
+                                  bb.height,
+                                  32,
+                                  24,
+                                  &corrected_bb_x, 
+                                  &corrected_bb_y, 
+                                  &corrected_bb_width, 
+                                  &corrected_bb_height);
+                                  
+                                  
+        // 找到 bounding box 裡面的最小、最大以及平均溫度
+        find_min_max_average_thermal_in_bounding_box( mlx90640To, 
+                                                      32, 
+                                                      24,
+                                                      corrected_bb_x, 
+                                                      corrected_bb_y, 
+                                                      corrected_bb_width, 
+                                                      corrected_bb_height,
+                                                      min_max_ave_thermal_in_bd_box);
+
+          
                                           
     }
     if (!bb_found) {
@@ -506,23 +530,38 @@ void loop()
         ei_printf("    anomaly score: %.3f\n", result.anomaly);
 #endif
 
-    if (savetospiffs == true){
-      // 將全部圖片上傳到webserver
-      /*
-      save_rgb888_image_to_spiffs(croped_snapshot_buf,
-                                  EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                  EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                  EI_CAMERA_FRAME_BYTE_SIZE,  
-                                  SPIFFS_FILE_PHOTO_ESP);*/
-      
-      save_rgb888_image_to_spiffs(buf_after_addition,
-                                  EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                  EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                  EI_CAMERA_FRAME_BYTE_SIZE,  
-                                  SPIFFS_FILE_PHOTO_THERMAL_ESP);
-      savetospiffs = false;
-      Serial.println("save image to SPIFFS");
-    }
+    
+    // 將全部圖片儲存到 SPIFFS 的快閃記憶體裡面
+    save_rgb888_image_to_spiffs(croped_snapshot_buf,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_ESP);
+    
+    save_rgb888_image_to_spiffs(buf_after_addition,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_MLX90640_ESP);
+
+    save_rgb888_image_to_spiffs(rgb888_resized_buf_mlx90640,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_MLX90640);
+
+    Serial.println("save image to SPIFFS");
+
+
+    // 印出整體的溫度值
+    Serial.println("Thermal in whole enviroment ----- Min Temp:" + String(minTemp_and_maxTemp_and_aveTemp[0]) + " | " +
+                   "Max Temp: " + String(minTemp_and_maxTemp_and_aveTemp[1]) + " | " +
+                   "Ave Temp: " + String(minTemp_and_maxTemp_and_aveTemp[2]));       
+                      
+    // 印出 bounding box 裡面的溫度
+    Serial.println("Thermal in bounding box ----- Min Temp:" + String(min_max_ave_thermal_in_bd_box[0]) + " | " +
+                   "Max Temp: " + String(min_max_ave_thermal_in_bd_box[1]) + " | " +
+                   "Ave Temp: " + String(min_max_ave_thermal_in_bd_box[2]));  
 
 
     logMemory(); // 紀錄記憶體用量
@@ -729,27 +768,28 @@ void save_rgb888_image_to_spiffs( uint8_t * buf,
 void handle_OnConnect() {
   server.send(200, "text/html", index_html);
 }
-void handle_save() {
-  savetoSD = true;
-  Serial.println("Saving Image to SD Card");
-  server.send(200, "text/plain", "Saving Image to SD Card"); 
-}
-void get_image(){
-  savetospiffs = true;
-  Serial.println("Saving Image to SPIFFS");
-  server.send(200, "text/plain", "Saving Image to SPIFFS"); 
-}
 void handle_NotFound(){
   server.send(404, "text/plain", "Not found");
 }
-void handleGetText() {
-  server.send(200, "text/plain", file_name);
+void handleGetText_min_temp() {
+  char charArray[20];
+  //snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[0]);
+  dtostrf(minTemp_and_maxTemp_and_aveTemp[0],        // 要轉換的浮點數
+          8,            // 轉換後的字符串總寬度（包括小數點和正負號）
+          2,            // 小數位數
+          charArray);   // 存儲轉換結果的字符陣列
+  server.send(200, "text/plain", charArray);
 }
-void getDynamicText(char *buffer, size_t size) {
-  time_t currentTime = time(NULL);
-  snprintf(buffer, size, "Current Time: %s", asctime(localtime(&currentTime)));
+void handleGetText_max_temp() {
+  char charArray[20]; 
+  snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[1]);
+  server.send(200, "text/plain", charArray);
 }
-
+void handleGetText_ave_temp() {
+  char charArray[20]; 
+  snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[2]);
+  server.send(200, "text/plain", charArray);
+}
 
 #if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
 #error "Invalid model for current sensor"

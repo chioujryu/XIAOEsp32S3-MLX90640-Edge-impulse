@@ -20,46 +20,32 @@ const char index_html[] PROGMEM = R"rawliteral(
 
     <p>
       <button onclick="rotatePhoto();">ROTATE</button>
+      <button onclick="capturePhoto()">CAPTURE</button>
       <button onclick="savePhoto()">SAVE PHOTO</button>
     </p>
     
     <p>[New Captured Image takes 5 seconds to appear]</p>
-    <p id="dynamicText"></p>
+    <p>First press CAPTURE, then press SAVE PHOTO</p>
     
   </div>
-  <div><img src="/get_esp32_photo_url" id="dynamicImage1" width="30%"></div>
+  <div><img src="/saved_esp32_photo" id="photo1" width="30%"></div>
+  <div><img src="/saved_thermal_photo" id="photo2" width="30%"></div>
   
         <hr>
       <h5> @2023 Marcelo Rovai - MJRoBot.org </h5>
 </body>
 <script>
-  
-  // 每隔1秒，拍照一次
-  setInterval(function() {
-    // 拍照
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', "/capture", true);
-    xhr.send();
-
-    // 獲取照片地址
-    var img = document.getElementById("dynamicImage1");   // 獲取圖片元素:
-    // Update the image source with a new timestamp to avoid caching
-    img.src = "/get_esp32_photo_url?" + new Date().getTime();
-
-    // 獲取儲存照片的檔案名稱
-    var textElement = document.getElementById('dynamicText');
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/getText', true);
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            textElement.innerText = xhr.responseText;
-        }
-    };
-    xhr.send();
-  }, 1000);
+  var deg = 0;
+  function capturePhoto() {
+    /*這段程式碼使用 XMLHttpRequest 對象發送 AJAX 請求,實現不刷新頁面就可以更新內容的效果,每行代碼的作用如下:*/
+    var xhr = new XMLHttpRequest();     // 創建一個 XMLHttpRequest 對象,命名為 xhr。XMLHttpRequest 是瀏覽器提供的JavaScript API,用於發送 HTTP 請求與接收 HTTP 響應。
+    xhr.open('GET', "/capture", true);  // 調用 xhr 對象的 open() 方法,配置這次請求的方法、URL 和是否異步。 1. 方法傳 'GET',表示發送 GET 請求;   2. URL 傳 '/capture',表示請求的接口地址; 3. 第三個參數 true 表示這是一個異步請求。
+    xhr.send();                         // 調用 xhr 的 send() 方法,真正發送這次 AJAX 請求。
+    wait(500);                          // 等待 500 毫秒,給服務器一點響應的時間。
+    location.reload();                  // 調用 location.reload() 方法,重新加載當前頁面,以獲取更新後的內容。
+  }
 
   function savePhoto() {
-    
     var xhr = new XMLHttpRequest();
     xhr.open('GET', "/save", true);
     xhr.send();
@@ -68,8 +54,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   }
   
   function rotatePhoto() {
-    var deg = 0;
-    var img = document.getElementById("dynamicImage1");   // 獲取圖片元素:
+    var img = document.getElementById("photo");   // 獲取圖片元素:
     deg += 180;     // 累加旋轉角度:
 
     /*通過判斷 deg 除以 90 的餘數是否為奇數,來決定圖片的旋轉方向。
@@ -79,23 +64,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     else{ document.getElementById("container").className = "hori"; }
     img.style.transform = "rotate(" + deg + "deg)";   // 設置圖片的 transform 屬性: 根據計算好的 deg 角度,通過 CSS transform 屬性轉換圖片。
   }
-
-  function updateText() {
-    var dataElement = document.getElementById('dynamicText');
-    var xhr = new XMLHttpRequest();
-    
-    xhr.open('GET', "/getText", true);
-    // Set the callback for when the request completes
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            // Update the data element with the new data
-            dataElement.innerText = xhr.responseText;
-        }
-    };
-
-    xhr.send();
-  }
-  
 
   /*  這個函數是用來判斷一個數字是否為奇數的:
    n % 2 可以獲取參數n除以2的餘數

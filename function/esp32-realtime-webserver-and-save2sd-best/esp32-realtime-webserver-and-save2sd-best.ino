@@ -52,8 +52,8 @@ WebServer server(80);  //創建 server 實例
 boolean takeNewPhoto = false;   // 拍一張新照片
 boolean savePhotoSD = false;    // 儲存照片到sd卡
 int imageCount = 1;                // File Counter
-char file_name[256];
 bool whether_get_image_url = false;
+char file_name[256];
 
 /* Buffer define -------------------------------------------------------- */
 float * mlx90640To                       = (float *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * sizeof(float));
@@ -166,7 +166,6 @@ void setup()
   server.on("/capture", handle_capture);
   server.on("/getText", handleGetText);
   server.on("/get_esp32_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_ESP , "image/jpg");});
-  //server.on("/get_mlx90640_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_MLX90640 , "image/jpg");});
   server.onNotFound(handle_NotFound);  // http請求不可用時的回調函數
   server.begin(); 
   Serial.println("HTTP server started");
@@ -189,11 +188,10 @@ void loop()
   // capture and save to SD card
   if (savePhotoSD) {
     // save esp32 photo
-    sprintf(file_name, "/%d_esp32_image.jpg", imageCount);
+    sprintf(file_name, "/%d_esp32_image_.jpg", imageCount);
     esp32_photo_save_to_SD_card(frame_buffer, file_name);
     imageCount++;
     savePhotoSD = false;
-
     logMemory();  // check memory usage
   }
   delay(100);
@@ -205,7 +203,7 @@ void handle_OnConnect() {
 }
 void handle_capture() {
   whether_get_image_url = true;
-  server.send(200, "text/plain", "1231321"); 
+  server.send(200, "text/plain", "capture a photo"); 
 }
 void handle_save() {
   savePhotoSD = true;
@@ -216,7 +214,6 @@ void handle_NotFound(){
   server.send(404, "text/plain", "Not found");
 }
 void handleGetText() {
-  //getDynamicText(file_name, sizeof(file_name));
   server.send(200, "text/plain", file_name);
 }
 void getDynamicText(char *buffer, size_t size) {
@@ -235,7 +232,6 @@ void captureESP32SaveToSpiffs( camera_fb_t * fb, const String spffs_file_dir) {
     if (!fb) {
       Serial.println("Camera capture failed");
     }
-
     
     // save image in spiffs
     File file = SPIFFS.open(spffs_file_dir , FILE_WRITE); // 將空白照片放進SPIFFS裡面

@@ -1,8 +1,3 @@
-/* Includes ---------------------------------------------------------------- */
-//#include <XIAO-ESP32-Person-and-bottle-detection_inferencing.h>
-//#include "edge-impulse-sdk/dsp/image/image.hpp"
-#include <Adafruit_MLX90640.h>
-
 #include <WiFi.h>
 #include <WebServer.h>
 #include "esp_camera.h"
@@ -21,6 +16,7 @@
 
 camera_fb_t * fb           = NULL;
 size_t imageCount          = 0;
+
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 #if defined(CAMERA_MODEL_XIAO_ESP32S3)
@@ -48,6 +44,12 @@ size_t imageCount          = 0;
 #error "Camera model not selected"
 #endif
 
+
+#define CAPTURE_BOTTON    D1
+#define GROUND            D2
+#define HIGH_3V           D3
+#define HIGH_3V_LED       D10
+
 // 宣告函數
 void logMemory();
 void esp32_capture();
@@ -58,6 +60,15 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("setup");
+
+  pinMode(CAPTURE_BOTTON, INPUT);       // sets the digital pin D1 as INPUT
+  pinMode(GROUND, OUTPUT);      // sets the digital pin D2 as OUTPUT
+  pinMode(HIGH_3V, OUTPUT);    // sets the digital pin D3 as OUTPUT
+  pinMode(HIGH_3V_LED, OUTPUT);       // sets the digital pin D10 as INPUT
+  digitalWrite(GROUND, LOW); 
+  digitalWrite(HIGH_3V, HIGH); 
+  
+
 
   Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
   Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
@@ -95,24 +106,28 @@ void setup() {
   configInitCamera();
 
   logMemory();
+
+
 }
 
 void loop() {
-
+  
+  digitalWrite(HIGH_3V_LED, LOW);
   bool whether_to_check_memory_usage = false;
-
-  if(Serial.available()>0){
-    char receivedChar = Serial.read();
-    if (receivedChar == '1'){
-      Serial.println("Capture a photo using esp32");
-      char filename[32];
-      sprintf(filename, "/%d_image.jpg", imageCount);
-      esp32_capture_and_save_to_SD_card(filename);
-      whether_to_check_memory_usage = true;
-      imageCount ++;
-    }
+  int val = digitalRead(CAPTURE_BOTTON);
+  if(val != 1){
+    Serial.println("Capture a photo using esp32");
+    char filename[32];
+    sprintf(filename, "/%d_image.jpg", imageCount);
+    esp32_capture_and_save_to_SD_card(filename);
+    whether_to_check_memory_usage = true;
+    imageCount ++;
+    digitalWrite(HIGH_3V_LED, HIGH);  // 打開LED燈
   }
   if (whether_to_check_memory_usage == true){logMemory();}
+
+  delay(1000);
+
 }
 
 void logMemory() {

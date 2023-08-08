@@ -42,7 +42,7 @@ void write_file_txt(fs::FS &fs, const char * path,const char * message){
 // 從 SPIFF 拿取照片
 void getSpiffImg( WebServer & server, String path, String TyPe) 
 { 
-  if(SPIFFS.exists(path))  // 判斷此檔案是否存在於快閃記憶體
+  if(SPIFFS.exists(path))
   { 
     File file = SPIFFS.open(path, "r");
     server.streamFile(file, TyPe);  // 串流返回文件。
