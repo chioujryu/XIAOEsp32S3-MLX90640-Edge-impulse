@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <Wire.h>
 #include <time.h>
+#include <ArduinoJson.h> 
 #include "esp_camera.h"
 #include "esp_timer.h"
 #include "img_converters.h"
@@ -14,6 +15,7 @@
 #include "SPI.h"
 #include <string>
 #include "Esp.h"
+#include <base64.h>
 
 #include "Arduino.h"
 
@@ -22,6 +24,7 @@
 #include "mlx90640_thermal_processing.hpp" 
 #include "write_read_file.hpp" 
 #include "image_processing.hpp" 
+
 
 
 /* Constant defines -------------------------------------------------------- */
@@ -53,9 +56,9 @@ boolean savePhotoSD = false;    // 儲存照片到sd卡
 int imageCount = 1;                // File Counter
 bool whether_get_image_url = false;
 char file_name[256];
-char minTemp[32] = "26.24";
-char maxTemp[32] = "64.33";
-char aveTemp[32] = "53.26";
+float minTemp = 26.24;
+float maxTemp = 64.33;
+float aveTemp = 53.26;
 
 /* Buffer define -------------------------------------------------------- */
 float * mlx90640To                       = (float *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * sizeof(float));
@@ -164,12 +167,7 @@ void setup()
 
   // http server
   server.on("/", handle_OnConnect);
-  server.on("/save", handle_save);
-  server.on("/capture", handle_capture);
-  server.on("/get_temp", handle_get_temparature);
-  server.on("/getText", handleGetText);
-  server.on("/get_photo_and_temp", handle_get_photo_and_temp);
-  server.on("/get_esp32_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_ESP , "image/jpg");});
+  server.on("/data", HTTP_GET ,handle_get_all_data);
   server.onNotFound(handle_NotFound);  // http請求不可用時的回調函數
   server.begin(); 
   Serial.println("HTTP server started");
@@ -178,78 +176,52 @@ void setup()
 
 
 void loop()
-{
-  // 獲取 loop 開始時的時間
-  unsigned long start_time = millis();
-    
+{ 
   server.handleClient();  // WebServer 監聽客戶請求並處理
 
-  // Only take photo and show on webserver
-  if (whether_get_image_url){
-    Serial.println("ready to capture a image to SPIFFS");
-    captureESP32SaveToSpiffs(frame_buffer, SPIFFS_FILE_PHOTO_ESP);
-    whether_get_image_url = false;
-    
-  }
-                    
-  // capture and save to SD card
-  if (savePhotoSD) {
-    // save esp32 photo
-    sprintf(file_name, "/%d_esp32_image_.jpg", imageCount);
-    esp32_photo_save_to_SD_card(frame_buffer, file_name);
-    imageCount++;
-    savePhotoSD = false;
-    logMemory();  // check memory usage
-  }
-  delay(100);
+  captureESP32SaveToSpiffs(frame_buffer, SPIFFS_FILE_PHOTO_ESP);
 
-  // 獲取 loop 結束時的時間
-  unsigned long end_time = millis();
-  // 計算並打印 loop 花費的時間
-  unsigned long duration = end_time - start_time;
-  Serial.println("Time taken: " + String(duration) + " ms");
+  delay(300);
 }
+
 
 // webserver
 void handle_OnConnect() {
   server.send(200, "text/html", index_html);
 }
-// Capture ESP32 Photo and Save it to SPIFFS
-void handle_get_photo_and_temp() {                                                    
-  String result = "{";
-  result += "\"minTemp\":"+String(minTemp);
-  result += ",\"maxTemp\":"+String(maxTemp);
-  result += ",\"avgTemp\":"+String(aveTemp);
-  result += "}";
-
-  server.send(200, "text/plain", result);
-}
-void handle_capture() {
-  whether_get_image_url = true;
-  server.send(200, "text/plain", "capture a photo"); 
-}
-void handle_save() {
-  savePhotoSD = true;
-  Serial.println("Saving Image to SD Card");
-  server.send(200, "text/plain", "Saving Image to SD Card"); 
-}
 void handle_NotFound(){
   server.send(404, "text/plain", "Not found");
 }
-void handle_get_temparature(){
-  String result = "{";
-  result += "\"minTemp\":"+String(minTemp);
-  result += ",\"maxTemp\":"+String(maxTemp);
-  result += ",\"avgTemp\":"+String(aveTemp);
-  result += "}";
-  server.send(200, "text/plain", result);
-}
-void handleGetText() {
-  server.send(200, "text/plain", file_name);
-}
-void getDynamicText(char *buffer, size_t size) {
-  time_t currentTime = time(NULL);
-  snprintf(buffer, size, "Current Time: %s", asctime(localtime(&currentTime)));
+void handle_get_all_data(){
+  
+    // 讀取圖片
+    File file = SPIFFS.open("/photo.jpg", FILE_READ);
+    String imageBase64;
+    if (file) {
+      int picSize = file.size();
+      uint8_t *buf = new uint8_t[picSize];
+      file.read(buf, picSize);
+      file.close();
+
+      // 將圖片轉換為 Base64 格式
+      imageBase64 = base64::encode(buf, picSize);
+      delete[] buf;
+    } else {
+      Serial.println("Failed to open file for reading");
+      server.send(500, "text/plain", "Internal Server Error");
+      return;
+    }
+
+    // 創建 JSON 對象
+    String jsonData = "{";
+    jsonData += "\"image\":\"" + imageBase64 + "\",";
+    jsonData += "\"maxTemp\":" + String(maxTemp) + ",";
+    jsonData += "\"minTemp\":" + String(minTemp) + ",";
+    jsonData += "\"avgTemp\":" + String(aveTemp);
+    jsonData += "}";
+
+    // 傳送 JSON 數據
+    server.send(200, "application/json", jsonData);
 }
 
 // Capture ESP32 Photo and Save it to SPIFFS
@@ -290,41 +262,18 @@ void captureESP32SaveToSpiffs( camera_fb_t * fb, const String spffs_file_dir) {
     fb = NULL;
 }
 
+String packageData(){
+  StaticJsonDocument<200> doc;
+  doc["image"] = SPIFFS_FILE_PHOTO_ESP;
+  doc["tempMin"] = minTemp;
+  doc["tempMax"] = maxTemp;
+  doc["tempAvg"] = aveTemp;
 
+  String json;
+  serializeJson(doc, json);
 
-
-// Save esp32 photo to SD card
-void esp32_photo_save_to_SD_card(camera_fb_t * fb, const char * file_name) {
-    
-    // declare variable
-    uint8_t * jpg_buf = NULL;
-    size_t jpg_size = 0;
-    size_t fileSize = 0;
-    bool ok = 0; // Boolean indicating if the picture has been taken correctly
-    
-    
-    // Clean buffer
-    fb = esp_camera_fb_get();
-    esp_camera_fb_return(fb);  // dispose the buffered image
-    fb = NULL; // reset to capture errors
-
-    // capture
-    fb = esp_camera_fb_get();
-    if (!fb) {
-      Serial.println("Failed to get camera frame buffer");
-      return;
-    }
-
-    // Save photo to file
-    write_file_jpg(SD, file_name, fb->buf, fb->len);
-
-    // Release image buffer
-    esp_camera_fb_return(fb);  // 釋放掉 fb 的記憶體
-    fb = NULL;
-      
-    Serial.println("The picture has a size of " + String(fileSize) + " bytes");
+  return json;
 }
-
 
 void logMemory() {
   Serial.println("Used RAM: " + String(ESP.getHeapSize() - ESP.getFreeHeap()) + " bytes");
