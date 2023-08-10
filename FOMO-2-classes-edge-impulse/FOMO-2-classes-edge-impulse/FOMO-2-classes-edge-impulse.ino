@@ -211,8 +211,11 @@ void save_rgb888_image_to_spiffs( uint8_t * buf,
                                   uint16_t channels,  
                                   const String spffs_file_dir);
 
-
-
+void handle_OnConnect();
+void handle_NotFound();
+void handleGetText_min_temp();
+void handleGetText_max_temp();
+void handleGetText_ave_temp() ;
                       
 /**
 * @brief      Arduino setup function
@@ -371,6 +374,13 @@ void loop()
                      minTemp_and_maxTemp_and_aveTemp, 
                      rgb888_raw_buf_mlx90640, 
                      rgb888_resized_buf_mlx90640);
+
+    // 儲存圖片到 spiffs
+    save_rgb888_image_to_spiffs(rgb888_resized_buf_mlx90640,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_MLX90640);
                      
     // esp32 拍照
     if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
@@ -397,7 +407,13 @@ void loop()
                                                     croped_snapshot_buf, 
                                                     EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
                                                     EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
-
+    
+    // 儲存圖片到 spiffs
+    save_rgb888_image_to_spiffs(croped_snapshot_buf,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_ESP);
     
 
     // 照片相加
@@ -409,6 +425,13 @@ void loop()
                         EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
                         EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
                         EI_CAMERA_FRAME_BYTE_SIZE);
+
+    // 儲存圖片到 spiffs
+    save_rgb888_image_to_spiffs(buf_after_addition,
+                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                EI_CAMERA_FRAME_BYTE_SIZE,  
+                                SPIFFS_FILE_PHOTO_MLX90640_ESP);
 
 
     // 確認照片是否跟要放進模型推論的照片大小有一致
@@ -530,25 +553,8 @@ void loop()
         ei_printf("    anomaly score: %.3f\n", result.anomaly);
 #endif
 
-    
-    // 將全部圖片儲存到 SPIFFS 的快閃記憶體裡面
-    save_rgb888_image_to_spiffs(croped_snapshot_buf,
-                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                EI_CAMERA_FRAME_BYTE_SIZE,  
-                                SPIFFS_FILE_PHOTO_ESP);
-    
-    save_rgb888_image_to_spiffs(buf_after_addition,
-                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                EI_CAMERA_FRAME_BYTE_SIZE,  
-                                SPIFFS_FILE_PHOTO_MLX90640_ESP);
 
-    save_rgb888_image_to_spiffs(rgb888_resized_buf_mlx90640,
-                                EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                EI_CAMERA_FRAME_BYTE_SIZE,  
-                                SPIFFS_FILE_PHOTO_MLX90640);
+
 
     Serial.println("save image to SPIFFS");
 

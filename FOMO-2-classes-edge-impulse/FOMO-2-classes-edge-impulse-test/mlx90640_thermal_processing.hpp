@@ -121,8 +121,8 @@ void find_min_max_average_thermal_in_bounding_box(float * thermal_buf,
   * @param thermal_buf 溫度的 buffer, 如果是用MLX90640, 那 buffer 的寬跟高會是 32 x 24
   * @param thermal_buf_width 這是 buffer 的寬度
   * @param thermal_buf_height 這是 buffer 的高度
-  * @param bounding_box_x 這是 bounding box 中心點的 x 
-  * @param bounding_box_y 這是 bounding box 中心點的 y
+  * @param bounding_box_x 這是 bounding box x (左上角)
+  * @param bounding_box_y 這是 bounding box y (右上角)
   * @param bounding_box_width 這是 bounding box 的寬度
   * @param bounding_box_height 這是 bounding box 高度
   * @param min_max_ave_thermal_in_bd_box 這是你最後要取得的最大, 最小, 平均值
@@ -133,8 +133,8 @@ void find_min_max_average_thermal_in_bounding_box(float * thermal_buf,
   }
 
   // 獲取 bounding box 左上角的座標
-  uint16_t bd_box_topLeft_x = bounding_box_x - (bounding_box_width / 2);
-  uint16_t bd_box_topLeft_y = bounding_box_y - (bounding_box_height / 2);
+  uint16_t bd_box_topLeft_x = bounding_box_x;
+  uint16_t bd_box_topLeft_y = bounding_box_y;
   uint16_t bd_box_topLeft_index = find_image_buffer_index(thermal_buf_width, bd_box_topLeft_x, bd_box_topLeft_y, 1); // 獲取 bounding box 左上角的座標，在 Buffer 的 index
   Serial.println("bd_box_topLeft_index: " + String(bd_box_topLeft_index));
 

@@ -1,0 +1,114 @@
+    // 顯示環境溫度
+    var textElement = document.getElementById("dynamicText_min_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_mintemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+    send
+
+    var textElement = document.getElementById("dynamicText_max_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_mintemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+
+    var textElement = document.getElementById("dynamicText_ave_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_mintemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+
+
+
+
+
+    <div><img src="/mlx90640_esp32_addition_photo_url" id="dynamicImage2" width="100%"></div>  
+
+
+
+void handle_OnConnect() {
+  server.send(200, "text/html", index_html);
+}
+void handle_NotFound(){
+  server.send(404, "text/plain", "Not found");
+}
+void handleGetText_min_temp() {
+  char charArray[20];
+  //snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[0]);
+  dtostrf(minTemp_and_maxTemp_and_aveTemp[0],        // 要轉換的浮點數
+          8,            // 轉換後的字符串總寬度（包括小數點和正負號）
+          2,            // 小數位數
+          charArray);   // 存儲轉換結果的字符陣列
+  server.send(200, "text/plain", charArray);
+}
+void handleGetText_max_temp() {
+  char charArray[20]; 
+  snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[1]);
+  server.send(200, "text/plain", charArray);
+}
+void handleGetText_ave_temp() {
+  char charArray[20]; 
+  snprintf(charArray, sizeof(charArray), "%.2f", minTemp_and_maxTemp_and_aveTemp[2]);
+  server.send(200, "text/plain", charArray);
+}
+
+
+
+
+    /*
+    // 顯示環境溫度
+    var textElement = document.getElementById("dynamicText_min_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_mintemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+    xhr.send();
+
+    var textElement = document.getElementById("dynamicText_max_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_maxtemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+    xhr.send();
+
+    var textElement = document.getElementById("dynamicText_ave_temp");
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/getText_avetemp', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            textElement.innerText = xhr.responseText;
+        }
+    };
+    xhr.send();
+    */
+
+    /*
+    // 獲取照片地址
+    var img1 = document.getElementById("dynamicImage1");   // 獲取圖片元素:
+    // Update the image source with a new timestamp to avoid caching
+    img1.src = "/esp32_photo_url?" + new Date().getTime();*/
+
+    
+    var img2 = document.getElementById("dynamicImage2");   // 獲取圖片元素:
+    // Update the image source with a new timestamp to avoid caching
+    img2.src = "/mlx90640_esp32_addition_photo_url?" + new Date().getTime();
+
+    /*
+    var img3 = document.getElementById("dynamicImage3");   // 獲取圖片元素:
+    // Update the image source with a new timestamp to avoid caching
+    img3.src = "/mlx90640_photo_url?" + new Date().getTime();*/

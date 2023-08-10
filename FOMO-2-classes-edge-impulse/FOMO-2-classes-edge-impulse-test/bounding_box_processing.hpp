@@ -34,7 +34,7 @@ void bounding_box_correction( uint16_t original_buf_width,
 
                               
 
-                                
+/*                        
 // function implementation
 void draw_bounding_box(uint8_t * image_buf, 
                         uint16_t image_width, 
@@ -81,6 +81,60 @@ void draw_bounding_box(uint8_t * image_buf,
     draw_pixel(image_buf, rgb888_index, channels, 255, 0, 0);
   }
 
+  // draw center
+  uint32_t center_index = find_image_buffer_index(image_width, bounding_box_center_x, bounding_box_center_y, channels);
+  draw_pixel(image_buf, center_index, channels, 255, 0, 0);
+}*/
+
+// function implementation
+// 這個是 bounding box 的 x, y 在左上角
+void draw_bounding_box(uint8_t * image_buf, 
+                        uint16_t image_width, 
+                        uint16_t image_height, 
+                        uint8_t channels, 
+                        uint16_t bounding_box_x, 
+                        uint16_t bounding_box_y, 
+                        uint16_t bounding_box_width, 
+                        uint16_t bounding_box_height,
+                        uint8_t r,
+                        uint8_t g,
+                        uint8_t b)
+{
+  
+  //uint32_t center_index = find_image_buffer_index(image_width, bounding_box_center_x, bounding_box_center_y, channels);
+  uint32_t bd_box_leftTop_x = bounding_box_x;
+  uint32_t bd_box_leftTop_y = bounding_box_y;
+  uint32_t bd_box_leftBottom_x = bounding_box_x;
+  uint32_t bd_box_leftBottom_y = bounding_box_y + bounding_box_height;
+  uint32_t bd_box_rightTop_x = bounding_box_x + bounding_box_width;
+  uint32_t bd_box_rightTop_y = bounding_box_y;
+  uint32_t bd_box_rightBottom_x = bounding_box_x + bounding_box_width;
+  uint32_t bd_box_rightBottom_y = bounding_box_y + bounding_box_height;
+
+
+  // draw top line
+  for (int i = 0; i < bounding_box_width; i++){
+    uint32_t rgb888_index = find_image_buffer_index(image_width, bd_box_leftTop_x + i, bd_box_leftTop_y, channels);
+    draw_pixel(image_buf, rgb888_index, channels, r, g, b);
+  }
+
+  // draw bottom line
+  for (int i = 0; i < bounding_box_width; i++){
+    uint32_t rgb888_index = find_image_buffer_index(image_width, bd_box_leftBottom_x + i, bd_box_leftBottom_y, channels);
+    draw_pixel(image_buf, rgb888_index, channels, r, g, b);
+  }
+
+  // draw left line
+  for(int i = 0; i < bounding_box_height; i++){
+    uint32_t rgb888_index = find_image_buffer_index(image_width, bd_box_leftTop_x, bd_box_leftTop_y + i, channels);
+    draw_pixel(image_buf, rgb888_index, channels, r, g, b);
+  }
+
+  // draw right line
+  for(int i = 0; i < bounding_box_height; i++){
+    uint32_t rgb888_index = find_image_buffer_index(image_width, bd_box_leftTop_x + bounding_box_width, bd_box_leftTop_y + i, channels);
+    draw_pixel(image_buf, rgb888_index, channels, r, g, b);
+  }
 }
 
 

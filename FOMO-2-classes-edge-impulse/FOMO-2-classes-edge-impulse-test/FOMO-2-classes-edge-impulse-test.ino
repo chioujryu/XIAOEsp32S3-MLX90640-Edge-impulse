@@ -24,7 +24,13 @@
 #include <Object-detection-FOMO-96x96-2-classes_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 #include <Adafruit_MLX90640.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Wire.h>
+#include <time.h>
 
+#include "soc/soc.h"           // Disable brownour problems
+#include "soc/rtc_cntl_reg.h"  // Disable brownour problems
 #include "esp_camera.h"
 #include <SPIFFS.h>
 #include <FS.h>   // SD Card ESP32
@@ -37,8 +43,10 @@
 #include "image_processing.hpp"
 #include "bounding_box_processing.hpp"
 #include "mlx90640_thermal_processing.hpp"
+#include "webpage.h"
 
 Adafruit_MLX90640 mlx; 
+WebServer server(80);
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
@@ -125,6 +133,32 @@ Adafruit_MLX90640 mlx;
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
 uint8_t * snapshot_buf                          = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+uint8_t * resized_snapshot_buf                  = (uint8_t*)malloc(EI_CAMERA_RESIZED_FRAME_BUFFER_COLS * EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+uint8_t * croped_snapshot_buf                   = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+uint8_t * buf_after_addition                    = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+float * mlx90640To                              = (float *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * sizeof(float));
+float * minTemp_and_maxTemp_and_aveTemp         = (float *) malloc(3 * sizeof(float));
+float * min_max_ave_thermal_in_bd_box           = (float *) malloc(3 * sizeof(float));
+uint8_t * rgb888_raw_buf_mlx90640               = (uint8_t *) malloc(MLX90640_RAW_FRAME_BUFFER_COLS * MLX90640_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE * sizeof(uint8_t));
+uint8_t * rgb888_resized_buf_mlx90640           = (uint8_t *) malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE * sizeof(uint8_t));
+
+bool capture_and_inference = false;
+
+size_t imageCount = 0;
+
+const String SPIFFS_FILE_PHOTO_ESP = "/esp_photo.jpg";
+const String SPIFFS_FILE_PHOTO_MLX90640 = "/thermal_photo.jpg";
+const String SPIFFS_FILE_PHOTO_MLX90640_ESP = "/thermal_esp_photo.jpg";
+
+// Put your SSID & Password
+const char* ssid = "test";  // Enter SSID here
+const char* password = "test@1213";  //Enter Password here
+const char* ap_ssid = "chioujryu";  // Enter SSID here
+const char* ap_password = "0123456789";  //Enter Password here
+bool ap_wifi_mode = false;
+
+char file_name[256];
+
 
 
 static camera_config_t camera_config = {
@@ -172,6 +206,18 @@ void mlx90640_capture(float * thermal_buf,
                       float * min_and_max_and_ave_temp, 
                       uint8_t * rgb888_buf_32x24_thermal, 
                       uint8_t * rgb888_buf_320x240_thermal);
+void save_rgb888_image_to_spiffs( uint8_t * buf,
+                                  uint16_t buf_width, 
+                                  uint16_t buf_height, 
+                                  uint16_t channels,  
+                                  const String spffs_file_dir);
+
+void handle_OnConnect();
+void handle_capture_and_inference();
+void handle_NotFound();
+void handleGetText_min_temp();
+void handleGetText_max_temp();
+void handleGetText_ave_temp();
 
                       
 /**
@@ -194,10 +240,102 @@ void setup()
     Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
     Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
 
+    // Initialize SD card
+    if(!SD.begin(21)){
+      Serial.println("Card Mount Failed");
+      return;}
+    uint8_t cardType = SD.cardType();
+    
+    // determine if the type of SD card is available
+    if(cardType == CARD_NONE){
+      Serial.println("No SD card attached");
+      return;}
+    Serial.print("SD Card Type: ");
+    if(cardType == CARD_MMC){
+      Serial.println("MMC");
+    } else if(cardType == CARD_SD){
+      Serial.println("SDSC");
+    } else if(cardType == CARD_SDHC){
+      Serial.println("SDHC");
+    } else {
+      Serial.println("UNKNOWN");
+    }
+    // Calculate SD Size
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+  
+    //PSRAM Initialisation
+    if(psramInit()){
+            Serial.println("The PSRAM is correctly initialized");
+    }else{
+            Serial.println("PSRAM does not work");
+    }
+  
+    // MLX90640 setup
+    if (!mlx.begin()) {
+      Serial.println("Failed to initialize MLX90640!");
+      while (1);
+    }else{Serial.println("MLX90640 initialized!");}
+
+    // setup I2C
+    Wire.begin(); 
+    Wire.setClock(400000);
+
+    // Mounting SPIFFS，啟用 SPIFFS 檔案系統的意思
+    if (!SPIFFS.begin(true)) {
+      Serial.println("An Error has occurred while mounting SPIFFS");
+      ESP.restart();
+    }
+    else {
+      Serial.println("SPIFFS mounted successfully");
+    }
+
+    // wife setting
+    if (ap_wifi_mode != true){
+      // Connect to local wi-fi network
+      Serial.print("Connecting to ");
+      Serial.println(ssid);
+      WiFi.begin(ssid, password);
+    
+      // check wi-fi is connected to wi-fi network
+      while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+      }
+      Serial.println("");
+      Serial.println("WiFi connected..!");
+      Serial.print("Got IP: ");  
+      Serial.println(WiFi.localIP());
+      Serial.println("ID: " + String(ssid) + " | " + "PASSWORD: " + String(password));
+    }else{
+      // You can remove the password parameter if you want the AP to be open.
+      // a valid password must have more than 7 characters
+      if (!WiFi.softAP(ap_ssid, ap_password)) {
+        log_e("Soft AP creation failed.");
+        while(1);
+      }
+      IPAddress myIP = WiFi.softAPIP();
+      Serial.print("AP IP address: ");
+      Serial.println(myIP);
+      Serial.println("ID: " + String(ap_ssid) + " | " + "PASSWORD: " + String(ap_password));
+    }
+    
+    // Turn-off the 'brownout detector'
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
+
+    // http server
+    server.on("/", handle_OnConnect);
+    server.on("/capture_and_inference", handle_capture_and_inference);
+    server.on("/esp32_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_ESP , "image/jpg");});
+    server.on("/mlx90640_esp32_addition_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_MLX90640_ESP , "image/jpg");});
+    server.on("/mlx90640_photo_url", []() {getSpiffImg(server, SPIFFS_FILE_PHOTO_MLX90640 , "image/jpg");});
+    server.on("/get_text", handle_Get_Text);
+    server.onNotFound(handle_NotFound);  // http請求不可用時的回調函數
+    server.begin(); 
+    Serial.println("HTTP server started");
+    
 
     logMemory(); // 查看記憶體使用量
-
-    
 
     ei_printf("\nStarting continious inference in 2 seconds...\n");
     ei_sleep(2000);
@@ -210,7 +348,9 @@ void setup()
 */
 void loop()
 {
-      // 獲取 loop 開始時的時間
+    server.handleClient();
+    
+    // 獲取 loop 開始時的時間
     unsigned long start_time = millis();
 
     // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
@@ -218,81 +358,247 @@ void loop()
         return;
     }
 
-    // check if allocation was successful
-    if(snapshot_buf == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_get_data;
-                     
-    // esp32 拍照
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
-        ei_printf("Failed to capture image\r\n");
-        free(snapshot_buf);
-        return;
-    }
-
-    // 確認照片是否跟要放進模型推論的照片大小有一致
-    bool do_resize = false;
-    if ((img_width_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
-        || (img_height_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
-        do_resize = true;
-    }
-
-    // 將照片縮小到推論的照片大小
-    if(do_resize){
-      ei::image::processing::resize_image(snapshot_buf, 
-                                          EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
-                                          EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
-                                          snapshot_buf,
-                                          img_width_for_inference, 
-                                          img_height_for_inference, 
-                                          EI_CAMERA_FRAME_BYTE_SIZE);
-    }
-
-                 
+    if (capture_and_inference==true)
+    {
+        // check if allocation was successful
+        if(snapshot_buf == nullptr) {
+            ei_printf("ERR: Failed to allocate snapshot buffer!\n");
+            return;
+        }
+    
+        ei::signal_t signal;
+        signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
+        signal.get_data = &ei_camera_get_data;
+    
+    
+        // mlx90640 拍照
+        mlx90640_capture(mlx90640To,
+                         MLX90640_RAW_FRAME_BUFFER_COLS,
+                         MLX90640_RAW_FRAME_BUFFER_ROWS,
+                         minTemp_and_maxTemp_and_aveTemp, 
+                         rgb888_raw_buf_mlx90640, 
+                         rgb888_resized_buf_mlx90640);
+    
+        // 儲存圖片到 spiffs
+        save_rgb888_image_to_spiffs(rgb888_resized_buf_mlx90640,
+                                    EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                    EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                    EI_CAMERA_FRAME_BYTE_SIZE,  
+                                    SPIFFS_FILE_PHOTO_MLX90640);
+                         
+        // esp32 拍照
+        if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
+            ei_printf("Failed to capture image\r\n");
+            free(snapshot_buf);
+            return;
+        }
+    
+        // 將照片 放大
+        ei::image::processing::resize_image(snapshot_buf, 
+                                            EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                            EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                            resized_snapshot_buf, 
+                                            EI_CAMERA_RESIZED_FRAME_BUFFER_COLS, 
+                                            EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS, 
+                                            EI_CAMERA_FRAME_BYTE_SIZE);
+    
+        // 裁切照片
+        ei::image::processing::crop_image_rgb888_packed(resized_snapshot_buf, 
+                                                        EI_CAMERA_RESIZED_FRAME_BUFFER_COLS, 
+                                                        EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS, 
+                                                        120, 
+                                                        100, 
+                                                        croped_snapshot_buf, 
+                                                        EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                                        EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+        
+        // 儲存圖片到 spiffs
+        save_rgb888_image_to_spiffs(croped_snapshot_buf,
+                                    EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                    EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                    EI_CAMERA_FRAME_BYTE_SIZE,  
+                                    SPIFFS_FILE_PHOTO_ESP);
+        
+    
+        // 照片相加
+        two_image_addition( croped_snapshot_buf, 
+                            0.5, 
+                            rgb888_resized_buf_mlx90640, 
+                            0.5, 
+                            buf_after_addition, 
+                            EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                            EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                            EI_CAMERA_FRAME_BYTE_SIZE);
     
 
-    // Run the classifier
-    ei_impulse_result_t result = { 0 };
-
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        ei_printf("ERR: Failed to run classifier (%d)\n", err);
-        return;
-    }
-
-    // print the predictions
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-                result.timing.dsp, result.timing.classification, result.timing.anomaly);
+    
+    
+        // 確認照片是否跟要放進模型推論的照片大小有一致
+        bool do_resize = false;
+        if ((img_width_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
+            || (img_height_for_inference != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
+            do_resize = true;
+        }
+    
+        // 將照片縮小到推論的照片大小
+        if(do_resize){
+          ei::image::processing::resize_image(croped_snapshot_buf, 
+                                              EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                              EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                              snapshot_buf,
+                                              img_width_for_inference, 
+                                              img_height_for_inference, 
+                                              EI_CAMERA_FRAME_BYTE_SIZE);
+        }
+    
+        
+    
+        // Run the classifier
+        ei_impulse_result_t result = { 0 };
+    
+        EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
+        if (err != EI_IMPULSE_OK) {
+            ei_printf("ERR: Failed to run classifier (%d)\n", err);
+            return;
+        }
+    
+        // print the predictions
+        ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+                    result.timing.dsp, result.timing.classification, result.timing.anomaly);
 
 #if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    bool bb_found = result.bounding_boxes[0].value > 0;
-    for (size_t ix = 0; ix < result.bounding_boxes_count; ix++) {
-        auto bb = result.bounding_boxes[ix];
-        if (bb.value == 0) {
-            continue;
+        bool bb_found = result.bounding_boxes[0].value > 0;
+        uint8_t r = 0;
+        uint8_t g = 0;
+        uint8_t b = 0;
+        for (size_t ix = 0; ix < result.bounding_boxes_count; ix++) {
+            auto bb = result.bounding_boxes[ix];
+            if (bb.value == 0) {
+                continue;
+            }
+            ei_printf("    %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\n", bb.label, bb.value, bb.x, bb.y, bb.width, bb.height);
+    
+            uint16_t corrected_bb_x;
+            uint16_t corrected_bb_y;
+            uint16_t corrected_bb_width;
+            uint16_t corrected_bb_height;
+    
+            // 校正 bounding box，給圖片相加用
+            bounding_box_correction(  img_width_for_inference, 
+                                      img_height_for_inference, 
+                                      bb.x, 
+                                      bb.y, 
+                                      bb.width, 
+                                      bb.height,
+                                      EI_CAMERA_RAW_FRAME_BUFFER_COLS,
+                                      EI_CAMERA_RAW_FRAME_BUFFER_ROWS,
+                                      &corrected_bb_x, 
+                                      &corrected_bb_y, 
+                                      &corrected_bb_width, 
+                                      &corrected_bb_height);
+    
+            // 改成固定 bounding box 的長跟寬
+            //corrected_bb_width = 16*3;
+            //corrected_bb_height = 16*3;
+    
+            
+            // Draw Bounding box
+            draw_bounding_box(buf_after_addition, 
+                              EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                              EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                              EI_CAMERA_FRAME_BYTE_SIZE, 
+                              corrected_bb_x, 
+                              corrected_bb_y, 
+                              corrected_bb_width, 
+                              corrected_bb_height,
+                              r,
+                              g,
+                              b);
+                             
+            
+            // 校正 bounding box，以獲取 mlx90640 的 bounding box thermal 溫度
+            bounding_box_correction(  img_width_for_inference, 
+                                      img_height_for_inference, 
+                                      bb.x, 
+                                      bb.y, 
+                                      bb.width, 
+                                      bb.height,
+                                      32,
+                                      24,
+                                      &corrected_bb_x, 
+                                      &corrected_bb_y, 
+                                      &corrected_bb_width, 
+                                      &corrected_bb_height);
+                                      
+                                      
+            // 找到 bounding box 裡面的最小、最大以及平均溫度
+            find_min_max_average_thermal_in_bounding_box( mlx90640To, 
+                                                          32, 
+                                                          24,
+                                                          corrected_bb_x, 
+                                                          corrected_bb_y, 
+                                                          corrected_bb_width, 
+                                                          corrected_bb_height,
+                                                          min_max_ave_thermal_in_bd_box);
+
+            // 更改 r g b 的顏色
+            if(ix%3 == 0){
+              r += 50;
+            }
+            else if(ix%3 == 1){
+              g += 50; 
+            }
+            else if(ix%3 == 2){
+              b += 50;
+            }
+            else if(r == 250 || g == 250 || b == 250){
+              r = 0;
+              g = 0;
+              b = 0;
+            }
+            
+                                              
         }
-        ei_printf("    %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\n", bb.label, bb.value, bb.x, bb.y, bb.width, bb.height);
-    }
-    if (!bb_found) {
-        ei_printf("    No objects found\n");
-    }
+        if (!bb_found) {
+            ei_printf("    No objects found\n");
+        }
 #else
-    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        ei_printf("    %s: %.5f\n", result.classification[ix].label,
-                                    result.classification[ix].value);
-    }
+        for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+            ei_printf("    %s: %.5f\n", result.classification[ix].label,
+                                        result.classification[ix].value);
+        }
 #endif
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
         ei_printf("    anomaly score: %.3f\n", result.anomaly);
 #endif
 
-    logMemory(); // 紀錄記憶體用量
+        // 儲存圖片到 spiffs
+        save_rgb888_image_to_spiffs(buf_after_addition,
+                                    EI_CAMERA_RAW_FRAME_BUFFER_COLS, 
+                                    EI_CAMERA_RAW_FRAME_BUFFER_ROWS, 
+                                    EI_CAMERA_FRAME_BYTE_SIZE,  
+                                    SPIFFS_FILE_PHOTO_MLX90640_ESP);
+
+
+        Serial.println("save image to SPIFFS");
+    
+    
+        // 印出整體的溫度值
+        Serial.println("Thermal in whole enviroment ----- Min Temp:" + String(minTemp_and_maxTemp_and_aveTemp[0]) + " | " +
+                       "Max Temp: " + String(minTemp_and_maxTemp_and_aveTemp[1]) + " | " +
+                       "Ave Temp: " + String(minTemp_and_maxTemp_and_aveTemp[2]));       
+                          
+        // 印出 bounding box 裡面的溫度
+        Serial.println("Thermal in bounding box ----- Min Temp:" + String(min_max_ave_thermal_in_bd_box[0]) + " | " +
+                       "Max Temp: " + String(min_max_ave_thermal_in_bd_box[1]) + " | " +
+                       "Ave Temp: " + String(min_max_ave_thermal_in_bd_box[2]));  
+    
+    
+        logMemory(); // 紀錄記憶體用量
+        capture_and_inference = false;
+    }
+
 
 
     // 獲取 loop 結束時的時間
@@ -300,6 +606,8 @@ void loop()
     // 計算並打印 loop 花費的時間
     unsigned long duration = end_time - start_time;
     Serial.println("Time taken: " + String(duration) + " ms");
+
+    delay(1000);
 }
 
 /**
@@ -453,6 +761,64 @@ void mlx90640_capture(float * thermal_buf,
   ei::image::processing::resize_image(rgb888_buf_32x24_thermal, 32, 24, rgb888_buf_320x240_thermal, 320, 240, 3);
 }
 
+void save_rgb888_image_to_spiffs( uint8_t * buf,
+                                  uint16_t buf_width, 
+                                  uint16_t buf_height, 
+                                  uint16_t channels,  
+                                  const String spffs_file_dir)
+{
+    uint8_t * jpg_buf = NULL;
+    size_t jpg_size = 0;
+    if(!fmt2jpg(buf, 
+                buf_width * buf_height * channels, 
+                buf_width, 
+                buf_height, 
+                PIXFORMAT_RGB888, 
+                31, 
+                &jpg_buf, 
+                &jpg_size)){Serial.println("Converted esp JPG size: " + String(jpg_size) + " bytes");}
+    
+    // save image in spiffs
+    File file = SPIFFS.open(spffs_file_dir , FILE_WRITE); // 將空白照片放進SPIFFS裡面
+  
+    // Insert the data in the photo file
+    if (!file) {
+      Serial.println("Failed to open file in writing mode");
+    }
+    else {
+      file.write(jpg_buf, jpg_size); // payload (image), payload length，將拍到的照片寫進空白照片裡面
+    }
+    
+    int fileSize = file.size();   // 取得照片的大小
+    Serial.println("SPIFF file size: " + String(fileSize));
+
+    if(!checkPhotoExitInSPIFFS(SPIFFS, spffs_file_dir)){Serial.println("No file in the SPIFFS");};
+    
+    file.close();   // 關閉照片
+ 
+    // release buffer
+    free(jpg_buf);
+}
+
+
+void handle_OnConnect() {
+  server.send(200, "text/html", index_html);
+}
+void handle_capture_and_inference(){
+  capture_and_inference = true;
+  server.send(200, "text/html", "capture_and_inference");
+}
+void handle_NotFound(){
+  server.send(404, "text/plain", "Not found");
+}
+void handle_Get_Text() {
+  String result = "{";
+  result += "\"minTemp\":"+String(minTemp_and_maxTemp_and_aveTemp[0]);
+  result += ",\"maxTemp\":"+String(minTemp_and_maxTemp_and_aveTemp[1]);
+  result += ",\"avgTemp\":"+String(minTemp_and_maxTemp_and_aveTemp[2]);
+  result += "}";
+  server.send(200, "text/plain", result);
+}
 
 #if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
 #error "Invalid model for current sensor"
