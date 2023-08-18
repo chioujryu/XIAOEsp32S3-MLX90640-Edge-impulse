@@ -1,0 +1,11 @@
+{
+    "version": 1,
+    "config": {
+        "localhost": {
+            "type": "transferLearning",
+            "organizationId": 36514,
+            "tlOperatesOn": "object_detection",
+            "tlObjectDetectionLastLayer": "fomo"
+        }
+    }
+}

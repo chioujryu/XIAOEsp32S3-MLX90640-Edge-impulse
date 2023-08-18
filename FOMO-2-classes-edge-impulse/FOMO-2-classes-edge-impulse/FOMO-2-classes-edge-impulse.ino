@@ -118,6 +118,8 @@ WebServer server(80);
 #error "Camera model not selected"
 #endif
 
+#define LED_SWITCH D9
+
 /* Constant defines -------------------------------------------------------- */
 #define EI_CAMERA_RESIZED_FRAME_BUFFER_COLS       32*16
 #define EI_CAMERA_RESIZED_FRAME_BUFFER_ROWS       24*16
@@ -222,6 +224,10 @@ void handleGetText_ave_temp() ;
 */
 void setup()
 {
+    // 設定LED燈，查看程式是否有運作
+    pinMode(LED_SWITCH, OUTPUT);
+
+  
     // put your setup code here, to run once:
     Serial.begin(115200);
     //comment out the below line to start inference immediately after upload
@@ -233,6 +239,8 @@ void setup()
     else {
         ei_printf("Camera initialized\r\n");
     }
+
+    
 
     Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
     Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
@@ -346,6 +354,12 @@ void setup()
 */
 void loop()
 {
+    Serial.println("loop from begin??");
+    digitalWrite(LED_SWITCH, LOW);
+    delay(1000);
+    digitalWrite(LED_SWITCH, HIGH);
+    delay(1000);
+    
     server.handleClient();
     
     // 獲取 loop 開始時的時間

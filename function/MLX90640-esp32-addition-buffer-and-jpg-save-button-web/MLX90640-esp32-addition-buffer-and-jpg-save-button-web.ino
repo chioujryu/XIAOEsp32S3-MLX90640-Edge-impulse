@@ -44,11 +44,11 @@ const String SPIFFS_FILE_PHOTO_ESP = "/photo.jpg";
 const String SPIFFS_FILE_PHOTO_MLX90640 = "/thermal_photo.jpg";
 
 // Put your SSID & Password
-const char* ssid = "test";  // Enter SSID here
+const char* ssid = "test_EXT";  // Enter SSID here
 const char* password = "test@1213";  //Enter Password here
 const char* ap_ssid = "chioujryu";  // Enter SSID here
 const char* ap_password = "0123456789";  //Enter Password here
-bool ap_wifi_mode = true;
+bool ap_wifi_mode = false;
 
 // instantiation 
 WebServer server(80);  //創建 server 實例
