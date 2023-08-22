@@ -517,8 +517,8 @@ bool ei_camera_init(void) {
       s->set_saturation(s, 0); // lower the saturation
     }
     
-    s->set_vflip(s, 1);
-    s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
+    s->set_vflip(s, 0);
+    s->set_hmirror(s, 1);        // 0 = disable , 1 = enable
     s->set_awb_gain(s, 1);
 
     is_initialised = true;
