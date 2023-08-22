@@ -26,10 +26,12 @@ if not os.path.exists(args.info_file):
     print('Info file', args.info_file, 'does not exist')
     exit(1)
 
+# 這些程式碼的目的是減少來自 TensorFlow 和相關庫的日誌訊息的詳細度，使輸出更加整潔，更加專注於錯誤。
+# 這行程式碼將 TensorFlow 的日誌級別設定為 ERROR。這意味著只有來自 TensorFlow 的錯誤訊息會被顯示，而其他類型的訊息（如警告和資訊訊息）將被抑制。
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 logging.disable(logging.WARNING)
 os.environ["KMP_AFFINITY"] = "noverbose"
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'   # 3: 只顯示 ERROR 訊息
 
 import tensorflow as tf
 

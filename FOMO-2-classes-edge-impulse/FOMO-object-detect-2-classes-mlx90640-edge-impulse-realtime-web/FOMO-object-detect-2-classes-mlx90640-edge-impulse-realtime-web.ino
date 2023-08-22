@@ -60,6 +60,9 @@ WebServer server(80);
 #define MLX90640_RAW_FRAME_BUFFER_ROWS            24
 #define EI_CAMERA_FRAME_BYTE_SIZE                 3
 
+#define LED_SWITCH D0
+#define GROUND     D1
+
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
@@ -83,8 +86,8 @@ const String SPIFFS_FILE_PHOTO_MLX90640 = "/thermal_photo.jpg";
 const String SPIFFS_FILE_PHOTO_MLX90640_ESP = "/thermal_esp_photo.jpg";
 
 // Put your SSID & Password
-const char* ssid = "test";  // Enter SSID here
-const char* password = "test@1213";  //Enter Password here
+const char* ssid = "test";  // Enter SSID here     test
+const char* password = "test@1213";  //Enter Password here    test@1213
 const char* ap_ssid = "chioujryu";  // Enter SSID here
 const char* ap_password = "0123456789";  //Enter Password here
 bool ap_wifi_mode = false;
@@ -152,7 +155,7 @@ void setup()
     // put your setup code here, to run once:
     Serial.begin(115200);
     //comment out the below line to start inference immediately after upload
-    while (!Serial);
+    //while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
     if (ei_camera_init() == false) {
         ei_printf("Failed to initialize Camera!\r\n");
@@ -160,6 +163,11 @@ void setup()
     else {
         ei_printf("Camera initialized\r\n");
     }
+
+    // 測試程式是否有在跑
+    pinMode(LED_SWITCH, OUTPUT);
+    pinMode(GROUND, OUTPUT);
+    digitalWrite(GROUND, LOW);
 
     Serial.printf("Free heap: %d\n", ESP.getFreeHeap());
     Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
@@ -266,6 +274,13 @@ void setup()
 */
 void loop()
 {
+  
+    // 測試程式是否有在跑
+    digitalWrite(LED_SWITCH, LOW);
+    delay(1000);
+    digitalWrite(LED_SWITCH, HIGH);
+    delay(1000);
+  
     server.handleClient();
     
     // 獲取 loop 開始時的時間
@@ -502,8 +517,8 @@ bool ei_camera_init(void) {
       s->set_saturation(s, 0); // lower the saturation
     }
     
-    s->set_vflip(s, 0);
-    s->set_hmirror(s, 1);        // 0 = disable , 1 = enable
+    s->set_vflip(s, 1);
+    s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
     s->set_awb_gain(s, 1);
 
     is_initialised = true;

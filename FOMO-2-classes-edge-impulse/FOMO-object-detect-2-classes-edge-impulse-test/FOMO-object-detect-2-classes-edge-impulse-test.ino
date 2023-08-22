@@ -56,7 +56,8 @@
 #error "Camera model not selected"
 #endif
 
-#define LED_SWITCH D9
+#define LED_SWITCH D0
+#define GROUND     D1
 
 /* Constant defines -------------------------------------------------------- */
 #define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
@@ -112,11 +113,13 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 void setup()
 {
     pinMode(LED_SWITCH, OUTPUT);
+    pinMode(GROUND, OUTPUT);
+    digitalWrite(GROUND, LOW);
     
     // put your setup code here, to run once:
     Serial.begin(115200);
     //comment out the below line to start inference immediately after upload
-    while (!Serial);
+    //while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
     if (ei_camera_init() == false) {
         ei_printf("Failed to initialize Camera!\r\n");
@@ -125,8 +128,11 @@ void setup()
         ei_printf("Camera initialized\r\n");
     }
 
+    
     ei_printf("\nStarting continious inference in 2 seconds...\n");
+    
     ei_sleep(2000);
+    
 }
 
 /**
@@ -136,11 +142,13 @@ void setup()
 */
 void loop()
 {
+    // put your main code here, to run repeatedly:
     digitalWrite(LED_SWITCH, LOW);
     delay(1000);
     digitalWrite(LED_SWITCH, HIGH);
     delay(1000);
 
+    
     // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
     if (ei_sleep(5) != EI_IMPULSE_OK) {
         return;
